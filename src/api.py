@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -17,7 +18,11 @@ from collections import Counter
 
 from pydantic import BaseModel
 from src.agents.graph import build_research_graph
+from src.agents.raven_graph import build_raven_graph
+from src.agents.raven_state import RavenState
 from src.agents.state import AgentState
+from src.llm.provider import get_llm_adapter
+from src.llm.groq_adapter import GroqProviderAdapter
 from src.config import configure_logging, get_settings
 from src.schemas import ResearchRequest, ResearchResponse, ImageResult
 from src.utils.tracing import TraceLogger
@@ -27,10 +32,37 @@ from src.tools.pdf import PDFProcessor
 from src.tools.doi import resolve_dois_batch
 from src.tools.summarize import generate_simple_explanation, generate_timeline_data
 from src.tools.chat import build_chat_prompt
+from src.utils.job_manager import ResearchJobManager
+from src.utils.ssl_context import create_aiohttp_connector
+from src.models.events import serialize_sse_event, SSEEventType
 
 settings = get_settings()
 configure_logging(settings)
 logger = structlog.get_logger(__name__)
+
+job_manager = ResearchJobManager()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan manager ensuring clean startup and task cancellation on shutdown."""
+    logger.info("server.started")
+    yield
+    logger.info("server.shutdown_started", active_jobs=len(job_manager.active_jobs()))
+    await job_manager.shutdown()
+    logger.info("server.shutdown_complete")
+
+
+app = FastAPI(title="Multi-Agent Research System", version="0.4.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.frontend_origin],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.state.graph = build_research_graph()
+app.state.job_manager = job_manager
 
 # Never log these sensitive fields
 _SENSITIVE_LOG_FIELDS = frozenset({
@@ -141,7 +173,7 @@ _ARXIV_CATEGORY_TOPICS: dict[str, str] = {
 async def _fetch_trending_topics() -> list[str]:
     """Fetch recent papers from arXiv and return trending topic names."""
     url = (
-        "http://export.arxiv.org/api/query?"
+        "https://export.arxiv.org/api/query?"
         "search_query=all:"
         "&sortBy=submittedDate"
         "&sortOrder=descending"
@@ -152,7 +184,11 @@ async def _fetch_trending_topics() -> list[str]:
         "arxiv": "http://arxiv.org/schemas/atom",
     }
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+        connector = create_aiohttp_connector()
+        async with aiohttp.ClientSession(
+            connector=connector,
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
                     logger.warning("arxiv.api.error", status=resp.status)
@@ -209,6 +245,7 @@ _PROVIDER_KEY_FIELDS = {
     "together": "together_api_key",
     "deepseek": "deepseek_api_key",
     "mistral": "mistral_api_key",
+    "opencode": "opencode_api_key",
 }
 
 
@@ -222,43 +259,119 @@ async def _ollama_reachable(timeout: float = 2.0) -> bool:
         return False
 
 
+_RUN_EVENTS_JOURNAL: dict[str, list[dict]] = {}
+
+
 @app.get("/health")
 async def health(probe: bool = False) -> dict:
-    """Liveness + readiness probe for orchestrators, load balancers and the UI.
-
-    Fast by default (no network I/O). Pass ``?probe=true`` to additionally
-    verify that the default LLM backend is reachable - a missing model server
-    is the most common cause of failing research jobs, and without this probe
-    an otherwise healthy process reports OK while every job times out.
-    """
-    configured = {"ollama": True}  # local server, no credentials required
+    """Liveness + readiness probe reporting Groq status, fallback status, and router health."""
+    configured = {"ollama": True}
     for name, key_field in _PROVIDER_KEY_FIELDS.items():
         if name != "ollama":
             configured[name] = bool(key_field and getattr(settings, key_field, None))
+
+    groq_status = {}
+    fallback_status = {}
+    router_status = {}
+    try:
+        adapter = get_llm_adapter()
+        if hasattr(adapter, "get_status"):
+            router_status = adapter.get_status()
+            groq_status = router_status.get("primary", {})
+            fallback_status = router_status.get("fallback", {})
+            configured["groq_keys_count"] = router_status.get("configured_keys_count", 0)
+            configured["groq_available"] = bool(router_status.get("available_keys_count", 0) > 0)
+            configured["groq_slots"] = [s["slot_name"] for s in router_status.get("slots", []) if s.get("is_available")]
+            configured["fallback_enabled"] = router_status.get("fallback_enabled", True)
+            if fallback_status:
+                configured["opencode_available"] = fallback_status.get("is_available", False)
+    except Exception:
+        pass
 
     llm: dict[str, object] = {"configured": configured}
     if probe:
         llm["ollama_reachable"] = await _ollama_reachable()
 
-    graph_loaded = app.state.graph is not None
-    # Without a probe we only know which backends are configured; ollama is the
-    # default and always counts as usable until proven otherwise.
-    healthy = graph_loaded and (configured["ollama"] or any(configured.values()))
+    graph_loaded = getattr(app.state, "graph", None) is not None
+    healthy = graph_loaded and (
+        configured.get("groq_available")
+        or configured.get("opencode_available")
+        or configured["ollama"]
+        or any(configured.values())
+    )
 
-    # The status code carries the verdict: orchestrators and load balancers
-    # (k8s readiness probes, ALB health checks) only look at the code, so an
-    # unhealthy instance must not answer 200. The body keeps the detail for
-    # clients that want to know *why*.
     return JSONResponse(
         status_code=200 if healthy else 503,
         content={
             "status": "ok" if healthy else "degraded",
             "version": app.version,
             "graph_loaded": graph_loaded,
+            "provider": "groq",
+            "fallback_provider": "opencode",
+            "groq": groq_status,
+            "fallback": fallback_status,
+            "router": router_status,
             "llm": llm,
             "healthy": healthy,
         },
     )
+
+
+
+@app.get("/runs/{job_id}/events")
+async def get_run_events(job_id: str):
+    """Retrieve persisted event stream journal for client reconnection and replay."""
+    job = job_manager.get_job(job_id)
+    if job:
+        return {
+            "job_id": job_id,
+            "events": job.events,
+            "status": job.status,
+            "result": job.result_payload,
+        }
+    events = _RUN_EVENTS_JOURNAL.get(job_id, [])
+    return {"job_id": job_id, "events": events, "status": "unknown", "result": None}
+
+
+@app.get("/runs/{job_id}/stream")
+async def stream_run_events(job_id: str):
+    """Connect or reconnect to an in-flight or completed research run's SSE stream."""
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Research run '{job_id}' not found")
+
+    queue = job.add_subscriber()
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield serialize_sse_event(event, job.job_id)
+                    if event.get("type") in ("result", "error", "cancelled"):
+                        break
+                except asyncio.TimeoutError:
+                    if job.completed_event.is_set() and queue.empty():
+                        break
+                    yield ": keep-alive\n\n"
+        except asyncio.CancelledError:
+            is_alive = not job.task.done() if job.task else False
+            logger.info("stream.client_disconnected", job_id=job.job_id, task_alive=is_alive)
+            raise
+        finally:
+            job.remove_subscriber(queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.post("/runs/{job_id}/cancel")
+async def cancel_run(job_id: str):
+    """Explicitly cancel an in-flight research run."""
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Run not found")
+    cancelled = job.cancel()
+    return {"job_id": job_id, "cancelled": cancelled, "status": job.status}
 
 
 @app.get("/trending")
@@ -274,138 +387,40 @@ async def get_trending_topics():
 
 
 @app.post("/research/stream")
-async def run_research_stream(request: ResearchRequest):
-    graph = getattr(app.state, "graph", None)
-    if graph is None:
-        graph = build_research_graph()
-        app.state.graph = graph
+async def run_research_stream(request: ResearchRequest, job_id: str | None = None):
+    raven_graph = getattr(app.state, "raven_graph", None)
+    if raven_graph is None:
+        raven_graph = build_raven_graph()
+        app.state.raven_graph = raven_graph
 
-    job_id = str(uuid.uuid4())
-    
-    # Zero-knowledge encryption params
-    encryption_passphrase = request.encryption_passphrase
-    encryption_salt = request.encryption_salt
+    job, created = job_manager.get_or_create_job(request, job_id=request.job_id or job_id)
+    if created:
+        _RUN_EVENTS_JOURNAL[job.job_id] = job.events
+        job_manager.start_job(job, raven_graph)
 
-    initial_state: AgentState = {
-        "query": request.topic,
-        "max_depth": request.max_depth,
-        "max_search_results": request.num_papers,
-        "provider": request.provider,
-        "openrouter_api_key": request.openrouter_api_key,
-        "model": request.model,
-        "critic_strictness": request.critic_strictness,
-        "encrypted_api_key": request.encrypted_api_key,
-        "encryption_iv": request.encryption_iv,
-        "encryption_salt": encryption_salt,
-        "encryption_passphrase": encryption_passphrase,
-        "uploaded_content": request.uploaded_content,
-        "job_id": job_id,
-        "seed": settings.default_seed,
-        "temperature": settings.default_temperature,
-        "top_p": settings.default_top_p,
-        "metadata": {
-            "job_id": job_id,
-            "start_time": datetime.now(timezone.utc).isoformat(),
-            "model": request.model or "default",
-            "provider": request.provider,
-            "retrieval_stats": {},
-            "pdf_stats": {},
-            "has_uploaded_content": request.uploaded_content is not None,
-        }
-    }
+    queue = job.add_subscriber()
 
     async def event_generator():
         try:
-            current_step = None
-            # Stream events from the graph
-            async for event in graph.astream_events(initial_state, version="v1"):
-                kind = event["event"]
-                
-                # Filter for node start/end events to track progress
-                if kind == "on_chain_start" and event["name"] in ["research", "draft", "critique"]:
-                    current_step = event["name"]
-                    yield f"data: {json.dumps({'type': 'progress', 'step': event['name'], 'status': 'running'})}\n\n"
-                
-                elif kind == "on_chain_end" and event["name"] in ["research", "draft", "critique"]:
-                    yield f"data: {json.dumps({'type': 'progress', 'step': event['name'], 'status': 'completed'})}\n\n"
-                    current_step = None
-                
-                elif kind == "on_chat_model_stream" and current_step == "draft":
-                    content = event["data"]["chunk"].content
-                    if content:
-                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
-
-            # Get final state to return the result
-            final_state = await graph.ainvoke(initial_state)
-            draft = final_state.get("draft")
-            # Deduplicate sources by base URL (strip " (part N)" suffix)
-            raw_sources = [doc["source"] for doc in final_state.get("documents", [])]
-            sources = list(dict.fromkeys(
-                re.sub(r'\s*\(part \d+\)$', '', s) for s in raw_sources
-            ))
-            
-            # Save graph execution trace (encrypted at rest if passphrase provided)
-            tracer = TraceLogger(
-                job_id,
-                encryption_passphrase=encryption_passphrase,
-                encryption_salt=encryption_salt,
-            )
-            tracer.save_graph_execution(final_state)
-
-            # Update end time in metadata
-            metadata = final_state.get("metadata", {})
-            metadata["end_time"] = datetime.now(timezone.utc).isoformat()
-            tracer.save_metadata(metadata)
-            
-            if not draft:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'Workflow produced no draft'})}\n\n"
-            else:
-                graph_data = build_citation_graph(_deduplicate_documents(final_state.get("documents", [])))
-
-                # Search for related images and graphs in parallel
-                images, graphs = await asyncio.gather(
-                    asyncio.to_thread(search_related_images, request.topic, 8),
-                    asyncio.to_thread(search_related_graphs, request.topic, 6),
-                )
-
-                image_results = [
-                    ImageResult(
-                        title=img.get("title", ""),
-                        image_url=img.get("image", ""),
-                        thumbnail_url=img.get("thumbnail"),
-                        source_url=img.get("url", ""),
-                        source_domain=img.get("source", ""),
-                        width=int(img["width"]) if img.get("width") and img["width"].isdigit() else None,
-                        height=int(img["height"]) if img.get("height") and img["height"].isdigit() else None,
-                    )
-                    for img in images
-                ]
-                graph_results = [
-                    ImageResult(
-                        title=img.get("title", ""),
-                        image_url=img.get("image", ""),
-                        thumbnail_url=img.get("thumbnail"),
-                        source_url=img.get("url", ""),
-                        source_domain=img.get("source", ""),
-                        width=int(img["width"]) if img.get("width") and img["width"].isdigit() else None,
-                        height=int(img["height"]) if img.get("height") and img["height"].isdigit() else None,
-                    )
-                    for img in graphs
-                ]
-
-                result = ResearchResponse(
-                    final_report=draft,
-                    sources=sources,
-                    topic=request.topic,
-                    graph_data=graph_data,
-                    images=image_results,
-                    graphs=graph_results,
-                )
-                yield f"data: {json.dumps({'type': 'result', 'data': result.model_dump()})}\n\n"
-
-        except Exception as e:
-            logger.error("stream.error", error=str(e))
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield serialize_sse_event(event, job.job_id)
+                    if event.get("type") in ("result", "error", "cancelled"):
+                        break
+                except asyncio.TimeoutError:
+                    if job.completed_event.is_set() and queue.empty():
+                        break
+                    # Keep-alive comment for SSE connection stability
+                    yield ": keep-alive\n\n"
+        except asyncio.CancelledError:
+            # Client disconnected from SSE stream.
+            # Crucial: Research run task continues executing independently in the background!
+            is_alive = not job.task.done() if job.task else False
+            logger.info("stream.client_disconnected", job_id=job.job_id, task_alive=is_alive)
+            raise
+        finally:
+            job.remove_subscriber(queue)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -609,25 +624,15 @@ _SYSTEM_PROMPT = (
 
 @app.post("/chat")
 async def chat_followup(request: ChatRequest):
-    """Answer a follow-up question about a research report (non-streaming)."""
-    settings = get_settings()
+    """Answer a follow-up question about a research report using Groq."""
     prompt = build_chat_prompt(request.question, request.report, request.sources)
-
-    from src.agents.nodes import _get_llm
     try:
-        llm = _get_llm(
-            provider=request.provider,
-            model=request.model,
-            seed=settings.default_seed,
-            temperature=0.3,
-            top_p=0.9,
-        )
+        adapter = get_llm_adapter()
         from langchain_core.messages import HumanMessage, SystemMessage
-        response = await llm.ainvoke([
+        answer = await adapter.ainvoke([
             SystemMessage(content=_SYSTEM_PROMPT),
             HumanMessage(content=prompt)
-        ])
-        answer = response.content if hasattr(response, "content") else str(response)
+        ], temperature=0.3)
         return {"answer": answer}
     except Exception as exc:
         logger.error("chat.failed", error=str(exc))

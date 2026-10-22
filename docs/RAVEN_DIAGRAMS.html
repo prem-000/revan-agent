@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAVEN — System Design Diagrams</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #0e0f14;
+      --surface: #15161e;
+      --surface2: #1c1d2a;
+      --border: #2a2b3d;
+      --accent: #7d93ff;
+      --accent2: #4cc38a;
+      --text: #e2e4f0;
+      --muted: #7a7d9a;
+      --heading: #c8caff;
+      --tag-bg: #1f2035;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      line-height: 1.6;
+    }
+    header {
+      background: linear-gradient(135deg, #0e0f14 0%, #151730 50%, #0d1128 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 3rem 2rem 2.5rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 80% at 50% 0%, rgba(125,147,255,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    header h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #c8caff 0%, #7d93ff 40%, #4cc38a 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p {
+      margin-top: 0.75rem;
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 640px;
+      margin-inline: auto;
+    }
+    .badge-row {
+      margin-top: 1.5rem;
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .badge {
+      background: var(--tag-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 0.25rem 0.85rem;
+      font-size: 0.78rem;
+      color: var(--accent);
+      letter-spacing: 0.03em;
+    }
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 2rem;
+      display: flex;
+      gap: 0.25rem;
+      overflow-x: auto;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    nav a:hover { color: var(--text); background: var(--surface2); }
+    main { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+    section { margin-bottom: 4rem; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    .section-number {
+      width: 2.2rem; height: 2.2rem;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), #5a4fff);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.95rem; color: #fff;
+      flex-shrink: 0;
+    }
+    section h2 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--heading);
+      letter-spacing: -0.02em;
+    }
+    .section-desc {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+      margin-left: 3.2rem;
+    }
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
+      margin-bottom: 1.5rem;
+    }
+    .diagram-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 2rem;
+      transition: border-color 0.3s;
+    }
+    .diagram-card:hover { border-color: var(--accent); }
+    .diagram-card-header {
+      padding: 1rem 1.5rem;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .diagram-card-header h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .diagram-card-header .tag {
+      font-size: 0.72rem;
+      background: rgba(125,147,255,0.12);
+      border: 1px solid rgba(125,147,255,0.3);
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 0.1rem 0.5rem;
+      margin-left: auto;
+    }
+    .diagram-body {
+      padding: 2rem;
+      overflow-x: auto;
+    }
+    .mermaid { text-align: center; }
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--border);
+      margin-top: 4rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>RAVEN System Diagrams</h1>
+  <p>Comprehensive architecture, agent workflow, data model, API, and sequence diagrams for the RAVEN multi-agent research system.</p>
+  <div class="badge-row">
+    <span class="badge">LangGraph</span>
+    <span class="badge">FastAPI + SSE</span>
+    <span class="badge">Next.js</span>
+    <span class="badge">Multi-Agent</span>
+    <span class="badge">SQLite → PostgreSQL</span>
+    <span class="badge">Pydantic v2</span>
+  </div>
+</header>
+
+<nav>
+  <a href="#system-design">① System Design</a>
+  <a href="#agent-workflow">② Agent Workflow</a>
+  <a href="#agent-contracts">③ Agent Contracts</a>
+  <a href="#data-design">④ Data Model</a>
+  <a href="#api-design">⑤ API Design</a>
+  <a href="#multi-agent">⑥ Multi-Agent</a>
+  <a href="#sequence">⑦ Sequence</a>
+  <a href="#budget-loop">⑧ Budget &amp; Loop</a>
+  <a href="#deployment">⑨ Deployment</a>
+</nav>
+
+<main>
+
+<!-- ================================================================
+     1. SYSTEM DESIGN
+     ================================================================ -->
+<section id="system-design">
+  <div class="section-header">
+    <div class="section-number">1</div>
+    <h2>System Design Overview</h2>
+  </div>
+  <p class="section-desc">End-to-end architecture: UI → API → LangGraph orchestrator → Agents → Sources → Persistence</p>
+  <div class="divider"></div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Full System Architecture</h3>
+      <span class="tag">flowchart TD</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","secondaryColor":"#15161e","tertiaryColor":"#0e0f14","background":"#0e0f14","nodeBorder":"#7d93ff","clusterBkg":"#1c1d2a","titleColor":"#c8caff","edgeLabelBackground":"#15161e","fontFamily":"Inter,sans-serif"}}}%%
+flowchart TD
+    subgraph CLIENT["CLIENT LAYER"]
+        U["User"]
+        UI["Next.js UI\nReact Flow · Tailwind · shadcn/ui"]
+    end
+    subgraph APIL["API LAYER — FastAPI"]
+        API["FastAPI\nREST + SSE"]
+    end
+    subgraph ORCH["ORCHESTRATOR — LangGraph"]
+        G["LangGraph Graph\nState · Routing · Budget · Events"]
+    end
+    subgraph AGENTS["AGENT LAYER"]
+        AN["Analyzer"]
+        PL["Planner"]
+        GATE{{"Plan Approval\nGate"}}
+        FAN["Fan-out\nSend API — parallel"]
+        NM["Normalizer\nDedupe + canonicalize"]
+        VF["Verifier\nProvenance · Relevance · Freshness"]
+        CR["Critic\nCoverage · Gaps · Risks"]
+        GP["Gap Planner\nTargeted follow-up"]
+        SY["Synthesizer\nCited report"]
+        FIN["Finalize\nCitation check · Export"]
+    end
+    subgraph TUNNELS["TUNNEL WORKERS — parallel"]
+        T1["GitHub"]
+        T2["Official Docs"]
+        T3["Research Papers"]
+        T4["Web (Tavily)"]
+        T5["Community"]
+        T6["Local Project"]
+    end
+    subgraph PERSIST["PERSISTENCE"]
+        CP[("LangGraph\nCheckpointer")]
+        DB[("App SQLite DB\nRuns · Evidence · Events")]
+        CACHE[("Fetch Cache\nURL+hash · TTL")]
+        VEC[("Vector Index\nsqlite-vec")]
+    end
+    subgraph LLM["LLM ADAPTER"]
+        ZEN["OpenCode Zen / Big Pickle\nProvider-agnostic · BudgetGate"]
+    end
+
+    U --> UI
+    UI -->|"POST /runs\nPUT /plan\nPOST /approve"| API
+    API -->|"SSE events"| UI
+    API --> G
+
+    G --> AN --> PL --> GATE
+    GATE -->|"edit"| PL
+    GATE -->|"approved"| FAN
+    FAN --> T1 & T2 & T3 & T4 & T5 & T6
+    T1 & T2 & T3 & T4 & T5 & T6 --> NM --> VF --> CR
+    CR -->|"gaps + budget"| GP --> FAN
+    CR -->|"stop condition"| SY --> FIN
+
+    G <--> CP & DB & CACHE & VEC
+    AN & PL & VF & CR & GP & SY <--> ZEN
+
+    style CLIENT fill:#1c1d2a,stroke:#2a2b3d
+    style APIL fill:#1a1d2e,stroke:#7d93ff
+    style ORCH fill:#1a1f1a,stroke:#4cc38a
+    style AGENTS fill:#1c1a2a,stroke:#a78bfa
+    style TUNNELS fill:#1a2020,stroke:#4cc38a
+    style PERSIST fill:#201a1a,stroke:#e0b04a
+    style LLM fill:#1a1a20,stroke:#7d93ff
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Layer Responsibility Map</h3>
+      <span class="tag">flowchart LR</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#5a7fff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart LR
+    subgraph L1["Presentation"]
+        UI["Next.js\nInput · Plan Review\nLive Flow · Report · History"]
+    end
+    subgraph L2["API"]
+        AP["FastAPI\nREST · SSE stream"]
+    end
+    subgraph L3["Orchestration"]
+        OR["LangGraph\nState · Fan-out · Loop\nBudget · Checkpointing"]
+    end
+    subgraph L4["Agents"]
+        AG["Analyzer · Planner\nVerifier · Critic\nSynthesizer · Gap Planner"]
+    end
+    subgraph L5["Tunnels"]
+        TN["GitHub · Docs · Papers\nWeb · Community · Local"]
+    end
+    subgraph L6["LLM"]
+        LM["Adapter\nProvider-agnostic\nBudgetGate · Structured output"]
+    end
+    subgraph L7["Persistence"]
+        DB["SQLite/PostgreSQL\nCheckpointer · App DB\nCache · Vectors"]
+    end
+
+    L1 <-->|"HTTP/SSE"| L2
+    L2 <-->|"Python calls"| L3
+    L3 <-->|"node invocation"| L4
+    L4 <-->|"LLM calls"| L6
+    L3 <-->|"parallel Send"| L5
+    L5 <-->|"HTTPS"| EXT["External APIs"]
+    L3 <-->|"read/write"| L7
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     2. AGENT WORKFLOW
+     ================================================================ -->
+<section id="agent-workflow">
+  <div class="section-header">
+    <div class="section-number">2</div>
+    <h2>Agent Workflow</h2>
+  </div>
+  <p class="section-desc">LangGraph graph execution flow — user query to cited report, including the bounded reflection loop.</p>
+  <div class="divider"></div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>LangGraph Node Execution Flow</h3>
+      <span class="tag">stateDiagram-v2</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+stateDiagram-v2
+    direction TB
+    [*] --> analyze : run.started
+
+    analyze --> plan : analysis.completed
+    note right of analyze
+        Idea: extract goal, constraints, unknowns
+        Project: inventory files, detect stack+deps
+        Output: IdeaBrief or ProjectContext
+        LLM calls: 1
+    end note
+
+    plan --> approval : plan.ready
+    note right of plan
+        Objectives with stable IDs
+        Tunnel assignments per objective
+        Acceptance criteria defined
+        LLM calls: 1 per round
+    end note
+
+    approval --> fan_out : plan.approved
+    approval --> plan : plan.edited
+    note right of approval
+        INTERRUPT — human gate
+        Wall-clock timer paused
+        User may edit objectives
+    end note
+
+    state "Parallel Tunnel Workers" as TUNNELS {
+        state fork_state <<fork>>
+        state join_state <<join>>
+        fan_out --> fork_state
+        fork_state --> github
+        fork_state --> docs
+        fork_state --> papers
+        fork_state --> web
+        fork_state --> community
+        fork_state --> local_project
+        github --> join_state
+        docs --> join_state
+        papers --> join_state
+        web --> join_state
+        community --> join_state
+        local_project --> join_state
+        join_state --> normalize
+    }
+
+    normalize --> verify
+    verify --> critic
+
+    state loop_decision <<choice>>
+    critic --> loop_decision
+
+    loop_decision --> gap_plan : continue — gaps found, budget remaining, progress made
+    loop_decision --> synthesize : sufficient | budget_exhausted | max_rounds | no_progress
+
+    gap_plan --> fan_out : round += 1
+
+    synthesize --> finalize
+    finalize --> [*] : run.completed
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Routing Logic After the Critic</h3>
+      <span class="tag">flowchart TD</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart TD
+    CR["Critic Result"]
+
+    CR --> Q1{"Any material gaps?"}
+    Q1 -->|"No"| S1["Synthesize\nstop_reason: sufficient"]
+
+    Q1 -->|"Yes"| Q2{"Budget exhausted?\ncalls or time"}
+    Q2 -->|"Yes"| S2["Synthesize\nstop_reason: budget_exhausted\nList unresolved objectives"]
+
+    Q2 -->|"No"| Q3{"round >= MAX_ROUNDS?"}
+    Q3 -->|"Yes"| S3["Synthesize\nstop_reason: max_rounds"]
+
+    Q3 -->|"No"| Q4{"Last round: zero\nnew evidence?"}
+    Q4 -->|"Yes"| S4["Synthesize\nstop_reason: no_progress"]
+
+    Q4 -->|"No"| GP["Gap Planner\nTargeted tasks for weak/missing only\nround += 1"]
+    GP --> FO["Fan-out\nNew parallel tunnel tasks"]
+    FO --> CR
+
+    S1 & S2 & S3 & S4 --> FIN["Finalize — citation check — export"]
+
+    style S1 fill:#1f3a2e,stroke:#4cc38a
+    style S2 fill:#3a2a1a,stroke:#e0b04a
+    style S3 fill:#2a1f3a,stroke:#a78bfa
+    style S4 fill:#3a1f1f,stroke:#ef7b6a
+    style GP fill:#1a2535,stroke:#7d93ff
+    style FO fill:#1a2535,stroke:#7d93ff
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     3. AGENT CONTRACTS
+     ================================================================ -->
+<section id="agent-contracts">
+  <div class="section-header">
+    <div class="section-number">3</div>
+    <h2>Agent Contracts</h2>
+  </div>
+  <p class="section-desc">Typed inputs, outputs, and limits for every agent — from AGENT_ROLES.md. One job each.</p>
+  <div class="divider"></div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Agent Input / Output Contracts</h3>
+      <span class="tag">flowchart TD</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart TD
+    ORC["Orchestrator\ngraph code only\nowns state routing budget fan-out events"]
+
+    subgraph ANALYSIS["1 Analyzer"]
+        AN["Input: query, project_root\nOutput: IdeaBrief or ProjectContext\nLLM calls: 1\nConstraint: read-only via guard.py"]
+    end
+    subgraph PLAN["2 Planner"]
+        PL["Input: IdeaBrief or ProjectContext, gaps\nOutput: ResearchPlan\nLLM calls: 1 per round\nConstraint: cannot modify approved objectives"]
+    end
+    subgraph NORM["4 Normalizer"]
+        NO["Input: list of EvidenceRecord\nOutput: deduped EvidenceRecord list\nLLM: false — deterministic\nDoes: canon URLs, strip tracking, stable IDs"]
+    end
+    subgraph VER["5 Verifier"]
+        VE["Input: evidence list, objectives\nOutput: VerificationReport\nLLM calls: 1 batched relevance\nChecks: attribution, reachability, excerpt, freshness"]
+    end
+    subgraph CRIT["6 Critic"]
+        CR["Input: evidence, objectives, round\nOutput: CriticReport\nLLM calls: 1 per round\nRule: every finding cites evidence IDs"]
+    end
+    subgraph GAPP["7 Gap Planner"]
+        GP["Input: CriticReport, round\nOutput: list of TunnelTask\nLLM calls: 1\nConstraint: only weak or missing objectives"]
+    end
+    subgraph SYNTH["8 Synthesizer"]
+        SY["Input: evidence ledger, objectives, stop_reason\nOutput: Report\nLLM calls: 1 plus 1 repair\nRule: every citation resolves to EvidenceRecord"]
+    end
+
+    subgraph TUNNELS["3 Tunnel Workers — concurrent"]
+        TG["GitHub\nlooks for: repos, issues, releases, license\nfreshness: latest release, last commit, archived"]
+        TD["Docs\nlooks for: API refs, guides, changelogs\nfreshness: doc version, last updated"]
+        TP["Papers\nlooks for: abstracts, DOIs, findings\nfreshness: publication date"]
+        TW["Web Tavily\nlooks for: articles, comparisons"]
+        TC["Community\nlooks for: firsthand experience, announcements\nfreshness: post timestamp"]
+        TL["Local\nlooks for: files, deps, entry points\naccess: read-only via guard.py"]
+    end
+
+    ORC --> ANALYSIS --> PLAN
+    ORC --> TUNNELS
+    ORC --> NORM --> VER --> CRIT
+    ORC --> GAPP --> TUNNELS
+    ORC --> SYNTH
+
+    style ORC fill:#1a1a30,stroke:#7d93ff
+    style ANALYSIS fill:#1c1d2a,stroke:#a78bfa
+    style PLAN fill:#1c1d2a,stroke:#a78bfa
+    style TUNNELS fill:#1a2520,stroke:#4cc38a
+    style NORM fill:#1c1d2a,stroke:#a78bfa
+    style VER fill:#1c1d2a,stroke:#a78bfa
+    style CRIT fill:#1c1d2a,stroke:#a78bfa
+    style GAPP fill:#1c1d2a,stroke:#a78bfa
+    style SYNTH fill:#1c1d2a,stroke:#a78bfa
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>RavenState — LangGraph Graph State Schema</h3>
+      <span class="tag">flowchart LR</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart LR
+    subgraph RS["RavenState — TypedDict"]
+        F1["run_id: str"]
+        F2["mode: idea or project"]
+        F3["query: str"]
+        F4["project_root: str or None"]
+        F5["project_context: ProjectContext or None"]
+        F6["plan: ResearchPlan or None"]
+        F7["plan_approved: bool"]
+        F8["round: int"]
+        F9["tasks: list of TunnelTask"]
+        F10["evidence: Annotated with merge_evidence reducer"]
+        F11["tunnel_status: Annotated with merge_status reducer"]
+        F12["usage: Annotated with add_usage reducer"]
+        F13["verification: VerificationReport or None"]
+        F14["critic: CriticReport or None"]
+        F15["stop_reason: StopReason or None"]
+        F16["report: Report or None"]
+    end
+
+    subgraph RP["ResearchPlan"]
+        RP1["objectives: list of ResearchObjective"]
+        RP2["feature_checks: list of str"]
+        RP3["error_checks: list of str"]
+    end
+
+    subgraph RO["ResearchObjective"]
+        RO1["objective_id: str — stable"]
+        RO2["question: str"]
+        RO3["rationale: str"]
+        RO4["priority: int"]
+        RO5["suggested_tunnels: list"]
+        RO6["acceptance_criteria: str"]
+    end
+
+    subgraph ER["EvidenceRecord"]
+        ER1["id: str"]
+        ER2["run_id, objective_id: str"]
+        ER3["source_type: github, docs, paper, web, community, local"]
+        ER4["excerpt: str — dedupe_key: str"]
+        ER5["freshness: fresh, aging, stale, unknown"]
+        ER6["verification_status: retrieved, verified, failed"]
+        ER7["checked_at: datetime"]
+    end
+
+    subgraph CR2["CriticReport"]
+        CR1["coverage: per objective — covered, weak, missing"]
+        CR2a["contradictions: list"]
+        CR3["feature_risks, project_errors: list"]
+        CR4["gap_list: list of Gap"]
+        CR5["decision: sufficient or continue"]
+    end
+
+    subgraph US["Usage — additive reducer"]
+        US1["llm_calls: int"]
+        US2["retries: int"]
+        US3["tokens_used: int"]
+        US4["elapsed_ms: int"]
+    end
+
+    RS -->|"contains"| RP
+    RS -->|"accumulates"| ER
+    RS -->|"produces"| CR2
+    RS -->|"tracks"| US
+    RP -->|"has many"| RO
+
+    style RS fill:#1a2535,stroke:#7d93ff
+    style RP fill:#1c1d2a,stroke:#a78bfa
+    style RO fill:#1c1d2a,stroke:#a78bfa
+    style ER fill:#1a2520,stroke:#4cc38a
+    style CR2 fill:#1c1d2a,stroke:#ef7b6a
+    style US fill:#25251a,stroke:#e0b04a
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     4. DATA DESIGN
+     ================================================================ -->
+<section id="data-design">
+  <div class="section-header">
+    <div class="section-number">4</div>
+    <h2>Data &amp; Database Design</h2>
+  </div>
+  <p class="section-desc">Entity–Relationship diagram and memory types from MEMORY_AND_DATA.md</p>
+  <div class="divider"></div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Entity–Relationship Diagram (App Database)</h3>
+      <span class="tag">erDiagram</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif","edgeLabelBackground":"#15161e"}}}%%
+erDiagram
+    RUNS {
+        text id PK
+        text mode "idea or project"
+        text query
+        text project_id FK
+        text profile "quick or balanced or deep"
+        text status "planning|running|done|stopped|failed"
+        text stop_reason
+        int llm_calls
+        int retries
+        int rounds
+        timestamp created_at
+        timestamp finished_at
+    }
+    PROJECTS {
+        text id PK
+        text root_path
+        text name
+        text profile_json
+        timestamp last_scanned_at
+    }
+    OBJECTIVES {
+        text id PK
+        text run_id FK
+        text question
+        text rationale
+        int priority
+        text tunnels_json
+        text acceptance_criteria
+        text coverage "covered|weak|missing"
+    }
+    EVIDENCE {
+        text id PK
+        text run_id FK
+        text objective_id FK
+        text claim
+        text source_type
+        text source_url
+        text excerpt
+        timestamp published_at
+        timestamp checked_at
+        text freshness "fresh|aging|stale|unknown"
+        text verification_status "retrieved|verified|failed"
+        text dedupe_key
+    }
+    FINDINGS {
+        text id PK
+        text run_id FK
+        int round
+        text kind "gap|contradiction|feature_risk|project_error"
+        text description
+        text evidence_ids_json
+        text severity
+    }
+    EVENTS {
+        text run_id FK
+        int seq
+        timestamp ts
+        text type
+        text node
+        int round
+        text data_json "redacted"
+    }
+    REPORTS {
+        text run_id PK
+        text markdown
+        text json
+        text citation_check
+    }
+    CACHE_ENTRIES {
+        text key PK "hash of URL/query"
+        text source_type
+        text content
+        timestamp fetched_at
+        timestamp expires_at
+    }
+    PROJECT_FILES {
+        text project_id FK
+        text rel_path
+        text content_hash
+        int size_bytes
+        text language
+    }
+    CHUNKS {
+        text id PK
+        text owner_type "project_file or evidence"
+        text owner_id FK
+        int line_start
+        int line_end
+        text text
+        blob embedding
+    }
+    DECISIONS {
+        text id PK
+        text project_id FK
+        text run_id FK
+        text title
+        text rationale
+        timestamp approved_at
+    }
+
+    RUNS ||--o{ OBJECTIVES : "has"
+    RUNS ||--o{ EVIDENCE : "gathers"
+    RUNS ||--o{ FINDINGS : "produces"
+    RUNS ||--o{ EVENTS : "emits"
+    RUNS ||--o| REPORTS : "generates"
+    RUNS }o--|| PROJECTS : "scans"
+    OBJECTIVES ||--o{ EVIDENCE : "satisfied by"
+    PROJECTS ||--o{ PROJECT_FILES : "contains"
+    PROJECT_FILES ||--o{ CHUNKS : "chunked into"
+    EVIDENCE ||--o{ CHUNKS : "chunked into"
+    PROJECTS ||--o{ DECISIONS : "records"
+    RUNS ||--o{ DECISIONS : "informs"
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Memory Types &amp; Lifetimes</h3>
+      <span class="tag">flowchart LR</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart LR
+    subgraph WM["Working Memory — one run"]
+        W["LangGraph Checkpointer\nGraph state: plan, evidence,\nround, budget, tasks"]
+    end
+    subgraph EM["Episodic Memory — until deleted"]
+        E["runs and reports tables\nQuery, plan, stop reason,\nreport, usage per run"]
+    end
+    subgraph EVM["Evidence Memory — retention policy"]
+        EV["evidence table + chunks\nAll gathered records\nwith provenance and dates"]
+    end
+    subgraph CM["Source Cache — TTL-based"]
+        C["cache_entries table\nURL+hash to content\n6h to 7d TTL per source type"]
+    end
+    subgraph PM["Project Memory — until files change"]
+        P["projects and project_files\nStack, deps, entry points,\nembeddings, file index"]
+    end
+    subgraph DM["Decision Memory — persistent"]
+        D["decisions table\nUser-approved recommendations only\nnever auto-stored"]
+    end
+
+    WM -->|"completes"| EM
+    WM -->|"evidence written"| EVM
+    WM -->|"fetches use"| CM
+    PM -->|"seeds context"| WM
+    EM -->|"seeds new run — re-verified"| WM
+    DM -->|"informs next run"| WM
+
+    style WM fill:#1a2535,stroke:#7d93ff
+    style EM fill:#1f2535,stroke:#a78bfa
+    style EVM fill:#1a2520,stroke:#4cc38a
+    style CM fill:#25251a,stroke:#e0b04a
+    style PM fill:#1a2525,stroke:#4cc38a
+    style DM fill:#251a25,stroke:#f472b6
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     5. API DESIGN
+     ================================================================ -->
+<section id="api-design">
+  <div class="section-header">
+    <div class="section-number">5</div>
+    <h2>API Design</h2>
+  </div>
+  <p class="section-desc">FastAPI REST endpoints, SSE event stream, and the UI-to-backend contract from UI_DESIGN.md</p>
+  <div class="divider"></div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>REST + SSE API Endpoints</h3>
+      <span class="tag">flowchart TD</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart TD
+    CLIENT["Next.js Client"]
+
+    subgraph RUNS_API["Runs API"]
+        R1["POST /runs\nCreate run — returns run_id\nBody: query, mode, profile, project_id"]
+        R2["GET /runs/{id}/plan\nFetch generated plan"]
+        R3["PUT /runs/{id}/plan\nEdit objectives"]
+        R4["POST /runs/{id}/approve\nApprove plan — starts research"]
+        R5["POST /runs/{id}/cancel\nCancel — stop_reason: cancelled"]
+        R6["GET /runs/{id}/report\nFetch report and artifacts"]
+        R7["GET /runs/{id}/events\nSSE Stream — Last-Event-ID for replay"]
+    end
+
+    subgraph PROJECTS_API["Projects API"]
+        P1["POST /projects/scan\nScan local project folder"]
+        P2["GET /projects/{id}\nGet project profile"]
+    end
+
+    subgraph HISTORY_API["History API"]
+        H1["GET /runs — list past runs"]
+        H2["GET /decisions — approved decisions"]
+        H3["DELETE /runs/{id} — delete run"]
+        H4["DELETE /projects/{id}/memory — clear index"]
+    end
+
+    CLIENT -->|"1 start run"| R1
+    CLIENT -->|"2 poll plan"| R2
+    CLIENT -->|"3 edit plan"| R3
+    CLIENT -->|"4 approve"| R4
+    CLIENT -->|"5 stream events"| R7
+    CLIENT -->|"6 fetch report"| R6
+    CLIENT -->|"cancel"| R5
+    CLIENT -->|"scan folder"| P1
+    CLIENT --> H1 & H2 & H3 & H4
+
+    style R7 fill:#1a2535,stroke:#7d93ff,color:#7d93ff
+    style R4 fill:#1f3a2e,stroke:#4cc38a
+    style R1 fill:#1f3a2e,stroke:#4cc38a
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>SSE Event Type Taxonomy</h3>
+      <span class="tag">flowchart LR</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart LR
+    SCHEMA["Event Schema\nrun_id · seq · ts\ntype · node · round · data"]
+
+    subgraph RE["Run Lifecycle"]
+        RE1["run.started"]
+        RE2["run.completed + stop_reason"]
+        RE3["run.stopped + stop_reason"]
+        RE4["run.failed"]
+    end
+    subgraph PE["Plan Events"]
+        PE1["analysis.completed"]
+        PE2["plan.ready"]
+        PE3["plan.approved"]
+    end
+    subgraph NE["Node Events"]
+        NE1["node.started"]
+        NE2["node.completed"]
+    end
+    subgraph TE["Tunnel Events"]
+        TE1["tunnel.started"]
+        TE2["tunnel.completed + evidence_count, latency_ms"]
+        TE3["tunnel.failed + error redacted"]
+        TE4["tunnel.disabled + reason"]
+    end
+    subgraph EE["Evidence Events"]
+        EE1["evidence.added + count"]
+        EE2["evidence.verified + status"]
+    end
+    subgraph CE["Critic and Budget"]
+        CE1["critic.result + decision, gaps"]
+        CE2["loop.continue + round"]
+        CE3["budget.update + calls, retries, elapsed"]
+    end
+    subgraph RR["Report"]
+        RR1["report.ready"]
+    end
+
+    SCHEMA --- RE & PE & NE & TE & EE & CE & RR
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     6. MULTI-AGENT WORKFLOW
+     ================================================================ -->
+<section id="multi-agent">
+  <div class="section-header">
+    <div class="section-number">6</div>
+    <h2>Multi-Agent Workflow Diagram</h2>
+  </div>
+  <p class="section-desc">Agent coordination, data hand-offs, parallelism, reducers, and shared budget enforcement.</p>
+  <div class="divider"></div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Multi-Agent Coordination &amp; Data Flow</h3>
+      <span class="tag">flowchart TD</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart TD
+    BUDGET["Shared Budget\nmax_calls · max_rounds · wall_clock\nAll agents draw from here"]
+    LLM_A["LLM Adapter — BudgetGate\nProvider-agnostic · Structured output\nRetries counted centrally"]
+
+    subgraph INTAKE["INTAKE"]
+        QUERY["User Query + mode + project"]
+        ANA["Analyzer\n1 LLM call\nIdeaBrief or ProjectContext"]
+        QUERY --> ANA
+    end
+
+    subgraph PLANNING["PLANNING"]
+        PLAN["Planner\n1 LLM call\nResearchPlan with objectives"]
+        APPR["Human Approval Gate\nINTERRUPT\nEdit or Approve"]
+        ANA -->|"Brief or Context"| PLAN
+        PLAN -->|"ResearchPlan"| APPR
+        APPR -->|"replan"| PLAN
+    end
+
+    subgraph RESEARCH["RESEARCH — Round N"]
+        FO["Fan-out\nLangGraph Send\nParallel TunnelTasks"]
+        APPR -->|"approved"| FO
+
+        subgraph PAR["Parallel Tunnel Workers — capped by MAX_CONCURRENT_TUNNELS"]
+            TG["GitHub"]
+            TD2["Docs"]
+            TP["Papers"]
+            TW["Web Tavily"]
+            TC["Community"]
+            TL["Local"]
+        end
+        FO --> TG & TD2 & TP & TW & TC & TL
+    end
+
+    subgraph VERIFY["VERIFICATION"]
+        RED["Reducer: merge_evidence\nAppend + dedupe by URL+hash"]
+        NOR["Normalizer — deterministic\nCanon URLs · Stable IDs"]
+        VER["Verifier\nAttribution · Reachability\nExcerpt · Relevance · Freshness"]
+        TG & TD2 & TP & TW & TC & TL -->|"TunnelResult"| RED
+        RED --> NOR --> VER
+    end
+
+    subgraph EVAL["EVALUATION"]
+        CRIT["Critic\n1 LLM call\nCoverage · Contradictions\nRisks · Gaps · Decision"]
+        VER --> CRIT
+    end
+
+    subgraph LOOP["LOOP — Orchestrator decides"]
+        ROUTE{{"Route\nsufficient or stop or continue"}}
+        GAPL["Gap Planner\n1 LLM call\nTargeted tasks for weak objectives"]
+        CRIT --> ROUTE
+        ROUTE -->|"continue"| GAPL
+        GAPL -->|"new tasks, round+=1"| FO
+    end
+
+    subgraph OUTPUT["OUTPUT"]
+        SYNTH["Synthesizer\n1 LLM call + 1 repair\nCited Report"]
+        FINAL["Finalize — deterministic\nCitation check · Export"]
+        REPORT["Final Report\nEvidence Ledger\nFreshness badges\nUnresolved questions"]
+        ROUTE -->|"stop"| SYNTH
+        SYNTH --> FINAL --> REPORT
+    end
+
+    BUDGET -.->|"gates all LLM calls"| LLM_A
+    LLM_A -.->|"structured calls"| ANA & PLAN & VER & CRIT & GAPL & SYNTH
+
+    style BUDGET fill:#3a2a1a,stroke:#e0b04a,color:#e0b04a
+    style LLM_A fill:#1a1a30,stroke:#7d93ff
+    style PAR fill:#1a2a1a,stroke:#4cc38a
+    style RED fill:#1a2535,stroke:#7d93ff
+    style ROUTE fill:#2a1a2a,stroke:#a78bfa
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Parallel Reducer Safety — State Merging</h3>
+      <span class="tag">flowchart LR</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart LR
+    subgraph WRITES["Parallel Writes"]
+        T1["GitHub TunnelResult"]
+        T2["Docs TunnelResult"]
+        T3["Web TunnelResult"]
+        TN["... more tunnels"]
+    end
+
+    subgraph REDUCERS["LangGraph Reducers"]
+        RE["evidence Reducer\nAppend + dedupe by dedupe_key\nno findings lost"]
+        RS["tunnel_status Reducer\nDict merge\nlatest timestamp wins"]
+        RU["usage Reducer\nAdditive counters\ncalls, retries, tokens"]
+    end
+
+    subgraph STATE["Graph State — safe"]
+        SE["evidence: list"]
+        SS["tunnel_status: dict"]
+        SU["usage: Usage"]
+    end
+
+    T1 & T2 & T3 & TN --> RE & RS & RU
+    RE --> SE
+    RS --> SS
+    RU --> SU
+
+    style RE fill:#1a2535,stroke:#7d93ff
+    style RS fill:#1a2535,stroke:#7d93ff
+    style RU fill:#1a2535,stroke:#7d93ff
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     7. SEQUENCE DIAGRAMS
+     ================================================================ -->
+<section id="sequence">
+  <div class="section-header">
+    <div class="section-number">7</div>
+    <h2>Sequence Diagrams</h2>
+  </div>
+  <p class="section-desc">Temporal interaction diagrams for the main RAVEN flows.</p>
+  <div class="divider"></div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Full Research Run — Idea Mode (Happy Path)</h3>
+      <span class="tag">sequenceDiagram</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","activationBorderColor":"#4cc38a","activationBkgColor":"#1a2520","noteBkgColor":"#1c1d2a","noteBorderColor":"#2a2b3d","fontFamily":"Inter,sans-serif"}}}%%
+sequenceDiagram
+    autonumber
+    actor User
+    participant UI as Next.js UI
+    participant API as FastAPI
+    participant Graph as LangGraph
+    participant AN as Analyzer
+    participant PL as Planner
+    participant TUN as Tunnel Workers
+    participant VER as Verifier
+    participant CR as Critic
+    participant GP as Gap Planner
+    participant SY as Synthesizer
+    participant DB as SQLite
+    participant LLM as LLM Adapter
+
+    User->>UI: Enter query and select profile balanced
+    UI->>API: POST /runs
+    API->>DB: INSERT runs status planning
+    API-->>UI: run_id r_123
+
+    UI->>API: GET /runs/r_123/events SSE connect
+    API-->>UI: SSE stream opened
+
+    API->>Graph: start_run
+    Graph->>AN: invoke
+    AN->>LLM: extract goal and constraints [1 call]
+    LLM-->>AN: IdeaBrief
+    AN-->>Graph: IdeaBrief
+    Graph->>API: emit analysis.completed
+    API-->>UI: event analysis.completed
+
+    Graph->>PL: invoke
+    PL->>LLM: create research plan [1 call]
+    LLM-->>PL: ResearchPlan
+    PL-->>Graph: ResearchPlan
+    Graph->>API: emit plan.ready
+    API-->>UI: event plan.ready
+
+    Note over UI,Graph: INTERRUPT — wall-clock paused
+    User->>UI: Review and approve plan
+    UI->>API: POST /runs/r_123/approve
+    API->>Graph: resume approved
+    Graph->>API: emit plan.approved
+    API-->>UI: event plan.approved
+
+    rect rgb(26, 42, 26)
+        Note over Graph,TUN: ROUND 1 — parallel research
+        Graph->>TUN: Send parallel tunnel tasks
+        Graph->>API: emit tunnel.started x5
+        API-->>UI: events tunnel.started x5
+        TUN->>TUN: fetch sources async 10s timeout
+        TUN-->>Graph: TunnelResult x5 via reducer
+        Graph->>API: emit tunnel.completed x5
+        API-->>UI: events tunnel.completed x5
+    end
+
+    Graph->>VER: verify evidence
+    VER->>LLM: score relevance batched [1 call]
+    LLM-->>VER: relevance scores
+    VER-->>Graph: VerificationReport
+    Graph->>API: emit evidence.verified
+    API-->>UI: event evidence.verified
+
+    Graph->>CR: evaluate round 1
+    CR->>LLM: assess coverage and gaps [1 call]
+    LLM-->>CR: CriticReport decision continue 2 gaps
+    CR-->>Graph: CriticReport
+    Graph->>API: emit critic.result decision continue
+    API-->>UI: event critic.result
+    Graph->>API: emit budget.update calls 10
+
+    rect rgb(26, 37, 42)
+        Note over Graph,TUN: ROUND 2 — targeted follow-up
+        Graph->>GP: plan follow-up tasks
+        GP->>LLM: create targeted tasks [1 call]
+        LLM-->>GP: TunnelTask x3
+        GP-->>Graph: tasks
+        Graph->>TUN: Send 3 targeted tunnels
+        TUN-->>Graph: TunnelResult x3
+        Graph->>API: emit loop.continue round 2
+        API-->>UI: event loop.continue
+
+        Graph->>VER: verify new evidence
+        Graph->>CR: evaluate round 2
+        CR->>LLM: assess coverage [1 call]
+        LLM-->>CR: CriticReport decision sufficient
+        CR-->>Graph: CriticReport
+        Graph->>API: emit critic.result sufficient
+        API-->>UI: event critic.result sufficient
+    end
+
+    Graph->>SY: synthesize stop_reason sufficient
+    SY->>LLM: write cited report [1 call]
+    LLM-->>SY: Report draft
+    SY->>SY: validate all citations resolve
+    SY-->>Graph: Report
+    Graph->>API: emit report.ready
+    Graph->>DB: persist report evidence events
+    Graph->>API: emit run.completed stop_reason sufficient
+    API-->>UI: event run.completed
+
+    UI->>API: GET /runs/r_123/report
+    API-->>UI: Report JSON and Markdown
+    UI->>User: Render report with citations and freshness badges
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>SSE Reconnect &amp; Event Replay</h3>
+      <span class="tag">sequenceDiagram</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","noteBkgColor":"#1c1d2a","noteBorderColor":"#2a2b3d","fontFamily":"Inter,sans-serif"}}}%%
+sequenceDiagram
+    actor User
+    participant UI as Next.js UI
+    participant API as FastAPI
+    participant DB as SQLite DB
+    participant Graph as LangGraph
+
+    UI->>API: GET /runs/id/events SSE Last-Event-ID 0
+    API->>DB: SELECT events WHERE seq > 0
+    API-->>UI: Replay events seq 1 to 15
+    API-->>UI: Live events seq 16, 17...
+
+    Note over UI,API: Network disconnect at seq 20
+    UI-xAPI: Connection lost
+
+    Graph->>DB: emit and persist events seq 21, 22, 23
+    Note over Graph: Run continues unaffected
+
+    UI->>API: GET /runs/id/events SSE Last-Event-ID 20
+    API->>DB: SELECT events WHERE seq > 20
+    API-->>UI: Replay missed events seq 21 to 23
+    API-->>UI: Continue live events seq 24+
+
+    Note over UI: Flow diagram fully restored — no gaps
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Tunnel Failure &amp; Graceful Degradation</h3>
+      <span class="tag">sequenceDiagram</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","noteBkgColor":"#1c1d2a","noteBorderColor":"#2a2b3d","fontFamily":"Inter,sans-serif"}}}%%
+sequenceDiagram
+    participant Graph as Orchestrator
+    participant GT as GitHub Tunnel
+    participant WT as Web Tunnel
+    participant CT as Community Tunnel
+    participant API as FastAPI SSE
+    participant Norm as Normalizer
+    participant Critic as Critic
+
+    Note over Graph: Fan-out dispatches 5 tunnels in parallel
+
+    par GitHub fails
+        Graph->>GT: TunnelTask
+        GT->>GT: fetch repos timeout 10s
+        GT-xGT: ConnectionError
+        GT-->>Graph: TunnelResult status failed error redacted
+        Graph->>API: emit tunnel.failed github
+    and Web succeeds
+        Graph->>WT: TunnelTask
+        WT-->>Graph: TunnelResult status ok evidence 8 records
+        Graph->>API: emit tunnel.completed web evidence_count 8
+    and Community has no credentials
+        Graph->>CT: TunnelTask
+        CT-->>Graph: TunnelResult status disabled reason X_API_KEY missing
+        Graph->>API: emit tunnel.disabled community
+    end
+
+    Note over Graph: merge_evidence reducer keeps all successful results
+
+    Graph->>Norm: normalize web plus docs plus paper results
+    Norm-->>Graph: 24 deduped records
+
+    Graph->>Critic: evaluate evidence
+    Note over Critic: GitHub objective is weak — only web coverage
+    Critic-->>Graph: CriticReport gaps github_objective decision continue
+
+    Note over Graph: Gap Planner retries GitHub next round — run not crashed
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Rate Limit 429 Handling with Budget</h3>
+      <span class="tag">sequenceDiagram</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","noteBkgColor":"#1c1d2a","noteBorderColor":"#2a2b3d","fontFamily":"Inter,sans-serif"}}}%%
+sequenceDiagram
+    participant Tunnel
+    participant Source as External Source
+    participant Budget as BudgetGate
+    participant Graph as Orchestrator
+    participant API as SSE
+
+    Tunnel->>Source: GET /api/v3/search
+    Source-->>Tunnel: 429 Too Many Requests Retry-After 30s
+
+    Tunnel->>Budget: request_retry tunnel github wait_ms 30000
+    Budget->>Budget: check retry budget balanced profile 1 retry allowed
+    Budget-->>Tunnel: approved
+
+    Note over Tunnel: Wait 30 seconds respecting Retry-After
+
+    Tunnel->>Source: GET /api/v3/search retry
+    Source-->>Tunnel: 200 OK results
+
+    Budget-->>Graph: usage updated retries 1
+    Graph->>API: emit budget.update retries 1
+
+    Note over Budget: If retry budget exhausted on next 429
+    Tunnel->>Budget: request_retry budget exhausted
+    Budget-->>Tunnel: denied
+    Tunnel-->>Graph: TunnelResult status partial error rate_limited redacted
+    Graph->>API: emit tunnel.failed
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     8. BUDGET AND LOOP
+     ================================================================ -->
+<section id="budget-loop">
+  <div class="section-header">
+    <div class="section-number">8</div>
+    <h2>Budget &amp; Loop Control</h2>
+  </div>
+  <p class="section-desc">Shared budget enforcement, stop reasons, and LLM call allocation — from RESOURCE_POLICY.md</p>
+  <div class="divider"></div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>LLM Call Budget Allocation — Balanced Profile (25 calls)</h3>
+      <span class="tag">pie</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","pieTitleTextColor":"#c8caff","pieSectionTextColor":"#e2e4f0","pie1":"#7d93ff","pie2":"#4cc38a","pie3":"#e0b04a","pie4":"#a78bfa","pie5":"#f472b6","pie6":"#ef7b6a","pie7":"#38bdf8","fontFamily":"Inter,sans-serif"}}}%%
+pie title LLM Call Budget — Balanced Profile (25 total, 23 used)
+    "Analyzer — 1 call" : 1
+    "Planner x3 rounds" : 3
+    "Tunnel extraction x11" : 11
+    "Verifier batched x3" : 3
+    "Critic x3 rounds" : 3
+    "Gap Planner x2" : 2
+    "Synthesizer + repair" : 2
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Stop Reason Decision Tree</h3>
+      <span class="tag">flowchart TD</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart TD
+    CRIT2["Critic says: continue"]
+    CRIT2 --> B1{"LLM calls >= max_calls\nOR elapsed >= wall_clock?"}
+    B1 -->|"Yes"| SB["budget_exhausted\nSynthesize partial report\nList unresolved objectives"]
+    B1 -->|"No"| B2{"round >= MAX_ROUNDS?"}
+    B2 -->|"Yes"| SR["max_rounds\nSynthesize best partial report"]
+    B2 -->|"No"| B3{"Last round: zero\nnew verified evidence?"}
+    B3 -->|"Yes"| SN["no_progress\nFurther rounds would not help"]
+    B3 -->|"No"| CONT["Continue\ngap_plan then fan_out\nround += 1"]
+
+    SS["sufficient\nCritic: all objectives covered\nFull report"] -.-> SYNTH2
+    SC["cancelled\nUser stopped the run"] -.-> SYNTH2
+    SF["failed\nUnrecoverable error\nPartial state saved"] -.-> SYNTH2
+
+    SB & SR & SN --> SYNTH2["Synthesizer\nalways runs — partial or full"]
+    CONT --> FANOUT["Fan-out next round"]
+
+    style SS fill:#1f3a2e,stroke:#4cc38a
+    style SB fill:#3a2a1a,stroke:#e0b04a
+    style SR fill:#2a1f3a,stroke:#a78bfa
+    style SN fill:#2a1f1f,stroke:#ef7b6a
+    style SC fill:#2a2520,stroke:#9a9aa2
+    style SF fill:#3a1a1a,stroke:#ef7b6a
+    style CONT fill:#1f3a2e,stroke:#4cc38a
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================
+     9. DEPLOYMENT
+     ================================================================ -->
+<section id="deployment">
+  <div class="section-header">
+    <div class="section-number">9</div>
+    <h2>Deployment Architecture</h2>
+  </div>
+  <p class="section-desc">Local-first MVP deployment and the migration path to multi-user hosted — from ADR-004, ADR-006</p>
+  <div class="divider"></div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Local-First Deployment (MVP)</h3>
+      <span class="tag">flowchart LR</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart LR
+    subgraph MACHINE["User Machine — localhost"]
+        subgraph FE["Frontend port 3000"]
+            NX["Next.js pnpm dev"]
+        end
+        subgraph BE["Backend port 8000"]
+            FP["FastAPI + Uvicorn"]
+            LG["LangGraph Orchestrator"]
+            AG["Agents + Tunnels"]
+        end
+        subgraph STORE["Storage"]
+            SQ["SQLite WAL raven.db"]
+            FS["Project Files — read-only via guard.py"]
+        end
+        NX -->|"HTTP 127.0.0.1:8000"| FP
+        FP --> LG --> AG
+        AG -->|"read-only"| FS
+        LG <-->|"SQLAlchemy + Alembic"| SQ
+    end
+    subgraph EXT["External APIs"]
+        ZEN["OpenCode Zen LLM"]
+        TAV["Tavily Web search"]
+        GH["GitHub API"]
+        OTH["Docs, Papers, Community"]
+    end
+    AG -->|"HTTPS"| ZEN & TAV & GH & OTH
+
+    style MACHINE fill:#1a1d2e,stroke:#7d93ff
+    style FE fill:#1a2535,stroke:#7d93ff
+    style BE fill:#1a2520,stroke:#4cc38a
+    style STORE fill:#25251a,stroke:#e0b04a
+    style EXT fill:#251a25,stroke:#a78bfa
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Database Migration Path — SQLite to PostgreSQL</h3>
+      <span class="tag">flowchart TD</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif"}}}%%
+flowchart TD
+    subgraph MVP["MVP — Local-first SQLite"]
+        M1["SQLite WAL\nLangGraph checkpointer"]
+        M2["SQLite WAL\nApp DB via SQLAlchemy 2.0"]
+        M3["SQLite FTS5\nKeyword search"]
+        M4["sqlite-vec or NumPy cosine\nVector search"]
+        M5["asyncio in-process\nNo queue needed"]
+    end
+
+    TRIGGER["Trigger: multi-user or hosted deployment need"]
+
+    subgraph PROD["Multi-user Hosted — PostgreSQL"]
+        P1["PostgreSQL\nLangGraph checkpointer"]
+        P2["PostgreSQL\nApp DB via SQLAlchemy 2.0"]
+        P3["PostgreSQL full-text search"]
+        P4["pgvector extension"]
+        P5["Redis — only if multiple workers\nCache and pub-sub"]
+    end
+
+    MVP --> TRIGGER --> PROD
+
+    STEPS["Migration Steps\n1. All queries already behind SQLAlchemy\n2. Swap checkpointer config\n3. Replace sqlite-vec with pgvector\n4. Replace FTS5 with PG full-text\n5. Run Alembic migrations\n6. Add Redis only if workers needed"]
+
+    TRIGGER --> STEPS
+
+    style MVP fill:#1a2535,stroke:#7d93ff
+    style PROD fill:#1f3a2e,stroke:#4cc38a
+    style STEPS fill:#1c1d2a,stroke:#2a2b3d,color:#9a9aa2
+      </div>
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="diagram-card-header">
+      <h3>Build Roadmap — Phase Timeline</h3>
+      <span class="tag">gantt</span>
+    </div>
+    <div class="diagram-body">
+      <div class="mermaid">
+%%{init:{"theme":"dark","themeVariables":{"primaryColor":"#1c1d2a","primaryTextColor":"#e2e4f0","primaryBorderColor":"#7d93ff","lineColor":"#7d93ff","fontFamily":"Inter,sans-serif","gridColor":"#2a2b3d","taskBkgColor":"#1c1d2a","taskBorderColor":"#7d93ff","taskTextColor":"#e2e4f0","taskTextLightColor":"#e2e4f0","activeTaskBkgColor":"#7d93ff","activeTaskBorderColor":"#a78bfa","doneTaskBkgColor":"#4cc38a","doneTaskBorderColor":"#4cc38a"}}}%%
+gantt
+    title RAVEN Build Roadmap
+    dateFormat YYYY-MM-DD
+    axisFormat %b %d
+
+    section Phase 0 Feasibility
+    Verify LLM capabilities       :p0a, 2026-10-20, 3d
+    Measure latency and limits    :p0b, after p0a, 2d
+    Record in DECISIONS.md        :p0c, after p0b, 1d
+
+    section Phase 1 Foundations
+    Repo scaffold and CI          :p1a, after p0c, 3d
+    Schemas and BudgetGate        :p1b, after p1a, 4d
+    LLM adapter and fake LLM      :p1c, after p1b, 3d
+
+    section Phase 2 Core Graph
+    Graph state and reducers      :p2a, after p1c, 3d
+    Analyzer Planner approval     :p2b, after p2a, 5d
+    Fan-out and Web tunnel        :p2c, after p2b, 3d
+    SQLite checkpointer app DB    :p2d, after p2c, 3d
+
+    section Phase 3 Verify Loop
+    Verifier and Critic           :p3a, after p2d, 5d
+    Gap Planner and routing       :p3b, after p3a, 3d
+    Synthesizer and citations     :p3c, after p3b, 4d
+
+    section Phase 4 API and UI
+    FastAPI and SSE               :p4a, after p3c, 4d
+    Next.js UI input to report    :p4b, after p4a, 7d
+    Flow view and design tokens   :p4c, after p4b, 3d
+
+    section Phase 5 Tunnels
+    GitHub Docs Papers tunnels    :p5a, after p4c, 5d
+    Community tunnel optional     :p5b, after p5a, 3d
+    Caching and rate limits       :p5c, after p5b, 2d
+
+    section Phase 6 Project Mode
+    Project connector and guard   :p6a, after p5c, 4d
+    Stack detection embeddings    :p6b, after p6a, 5d
+    Vector retrieval re-index     :p6c, after p6b, 3d
+
+    section Phase 7 Memory
+    Episodic and project memory   :p7a, after p6c, 4d
+    User controls view delete     :p7b, after p7a, 2d
+
+    section Phase 8 Eval Hardening
+    Eval dataset and scoring      :p8a, after p7b, 4d
+    Security and accessibility    :p8b, after p8a, 3d
+    MVP checklist sign-off        :p8c, after p8b, 2d
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p>RAVEN System Design Diagrams · Generated from ARCHITECTURE.md · AGENT_ROLES.md · MEMORY_AND_DATA.md · RESOURCE_POLICY.md · UI_DESIGN.md · DECISIONS.md</p>
+  <p style="margin-top:0.5rem;color:#4a4a5a;">Mermaid.js v11 · Dark theme · RAVEN Multi-Agent Research System</p>
+</footer>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    securityLevel: 'loose',
+    flowchart: { htmlLabels: true, curve: 'basis' },
+    sequence: { actorMargin: 50, messageMargin: 20, mirrorActors: false, width: 160 },
+    er: { diagramPadding: 20 },
+    gantt: { barHeight: 18, barGap: 5, topPadding: 50, sidePadding: 75 }
+  });
+</script>
+</body>
+</html>

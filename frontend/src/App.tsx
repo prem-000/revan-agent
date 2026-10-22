@@ -31,20 +31,27 @@ const FALLBACK_TOPICS = [
 function App() {
   const {
     isLoading,
+    isReconnecting,
     error,
     currentResult,
+    workflowEvents,
+    activeTopic,
     history,
     queueLength,
     queuedTopics,
     executeResearch,
+    retryResearch,
+    resetResearch,
     stopResearch,
     clearHistory,
-    setCurrentResult
+    setCurrentResult,
   } = useResearch()
 
+  const isResearchActive = isLoading || !!currentResult || !!error || !!activeTopic
+
   const [selectedTopic, setSelectedTopic] = useState<string>("")
-  const [researchProvider, setResearchProvider] = useState('ollama')
-  const [researchModel, setResearchModel] = useState<string | undefined>(undefined)
+  const [researchProvider, setResearchProvider] = useState('groq')
+  const [researchModel, setResearchModel] = useState<string | undefined>('openai/gpt-oss-120b')
   const [passphrase, setPassphrase] = useState('')
   const [hasBiometric, setHasBiometric] = useState(() => hasBiometricCredential())
   const [isUnlocking, setIsUnlocking] = useState(false)
@@ -277,12 +284,12 @@ function App() {
   }, [])
 
   return (
-    <div className="flex h-screen bg-warm-50 dark:bg-[#0c0b0a] text-warm-800 dark:text-warm-300 overflow-hidden selection:bg-primary-500 selection:text-white dark:selection:bg-primary-400 dark:selection:text-[#0c0b0a]">
+    <div className="flex h-screen bg-[#0B1020] text-[#F3F4F6] overflow-hidden selection:bg-[#8B7CFF] selection:text-white">
       <Sidebar
         history={history}
                         onSelect={handleSelectResult}
         onClear={clearHistory}
-        onNewChat={() => setCurrentResult(null)}
+        onNewChat={resetResearch}
         passphrase={passphrase}
         onPassphraseChange={setPassphrase}
         hasBiometricCredential={hasBiometric}
@@ -302,7 +309,7 @@ function App() {
       <main className="flex-1 flex flex-col h-full min-w-0">
         <div className="flex-1 overflow-y-auto">
           <AnimatePresence mode="wait">
-            {!currentResult && !isLoading ? (
+            {!isResearchActive ? (
               <motion.div
                 key="hero"
                 initial={{ opacity: 0 }}
@@ -338,15 +345,13 @@ function App() {
 
                 <div className="relative z-10 w-full flex flex-col items-center text-center">
                   {/* Compact hero */}
-                  <div className="mb-8">
-                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-warm-900 dark:text-warm-100 leading-[1.1]">
-                      Research anything.{' '}
-                      <span className="gradient-text">Instantly.</span>
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-100 leading-[1.1]">
+                      RAVEN{' '}
+                      <span className="text-sky-400 font-mono text-2xl font-semibold">· Project Intelligence</span>
                     </h1>
-                    <p className="text-sm text-warm-400 mt-2 max-w-md mx-auto leading-relaxed">
-                      Enter a topic to generate a comprehensive research report powered by autonomous agents.
+                    <p className="text-sm text-slate-400 mt-2 max-w-lg mx-auto leading-relaxed">
+                      Autonomous research and codebase intelligence. Submit an idea, comparison, or local project folder for multi-agent evidence synthesis.
                     </p>
-                  </div>
 
                   {/* Form */}
                   <div className="w-full max-w-xl">
@@ -426,12 +431,32 @@ function App() {
                   <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mb-6 flex items-center gap-3 px-5 py-4 bg-red-50/80 dark:bg-red-950/30 backdrop-blur-sm border border-red-200/60 dark:border-red-900/50 rounded-xl text-sm text-red-600 dark:text-red-400 shadow-sm"
+                    className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-4 bg-rose-950/40 backdrop-blur-sm border border-rose-800/60 rounded-xl text-sm text-rose-200 shadow-sm"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
-                      <AlertCircle className="w-4 h-4" />
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-rose-900/50 flex items-center justify-center shrink-0 text-rose-400">
+                        <AlertCircle className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-rose-100">Research Stream Notice</p>
+                        <p className="text-xs text-rose-300 mt-0.5">{error}</p>
+                      </div>
                     </div>
-                    <p className="flex-1">{error}</p>
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                      <button
+                        onClick={retryResearch}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-900/70 hover:bg-rose-800 border border-rose-700/60 rounded-lg text-xs font-semibold text-rose-100 transition-colors"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Retry Run
+                      </button>
+                      <button
+                        onClick={resetResearch}
+                        className="px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 rounded-lg text-xs font-medium text-slate-300 transition-colors"
+                      >
+                        New Search
+                      </button>
+                    </div>
                   </motion.div>
                 )}
 
@@ -460,11 +485,21 @@ function App() {
                 )}
 
                 {isLoading ? (
-                  <LoadingState onStop={stopResearch} />
+                  <LoadingState
+                    onStop={stopResearch}
+                    topic={activeTopic ?? undefined}
+                    isReconnecting={isReconnecting}
+                    events={workflowEvents}
+                  />
                 ) : currentResult ? (
                   <ErrorBoundary>
                     <ReportView data={currentResult} provider={researchProvider} model={researchModel} />
                   </ErrorBoundary>
+                ) : workflowEvents.length > 0 ? (
+                  <LoadingState
+                    topic={activeTopic ?? undefined}
+                    events={workflowEvents}
+                  />
                 ) : null}
               </motion.div>
             )}

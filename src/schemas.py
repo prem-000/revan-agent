@@ -9,12 +9,15 @@ class ResearchRequest(BaseModel):
     topic: str = Field(min_length=3, description="Primary research topic or question")
     max_depth: int = Field(default=3, ge=1, le=10, description="Controls how exhaustive the review should be")
     num_papers: int = Field(default=10, ge=1, le=50, description="Number of papers to search for")
-    provider: str = Field(default="ollama", pattern="^(ollama|openrouter|openai|anthropic|google|perplexity|groq|together|deepseek|mistral)$", description="LLM provider to use")
+    provider: str = Field(default="groq", pattern="^(ollama|openrouter|openai|anthropic|google|perplexity|groq|together|deepseek|mistral)$", description="LLM provider to use")
     openrouter_api_key: str | None = Field(default=None, description="API key for OpenRouter (required if provider is openrouter)")
     api_key: str | None = Field(default=None, description="API key for providers that require one (openai, perplexity, groq, etc.) — used directly (non-encrypted path)")
     model: str | None = Field(default=None, description="Specific model to use (e.g. 'llama3', 'x-ai/grok-4.1-fast')")
     critic_strictness: int = Field(default=5, ge=1, le=10, description="Strictness level of the critic agent (1=Lenient, 10=Strict)")
-
+    project_path: str | None = Field(default=None, description="Optional path to local project folder for read-only inspection")
+    profile: str = Field(default="standard", description="Depth profile: 'fast', 'standard', or 'deep'")
+    approval_policy: str = Field(default="auto", description="Plan approval policy: 'auto' or 'manual'")
+    job_id: str | None = Field(default=None, description="Optional job ID for reconnecting to an existing research run")
     # Optional uploaded PDF content for context
     uploaded_content: str | None = Field(
         default=None,

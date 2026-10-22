@@ -19,7 +19,7 @@ const FALLBACK_TOPICS = [
 ]
 
 /* ─── Live metric component (real-time dashboard feel) ─── */
-function LiveMetric({ icon: Icon, label, targetValue, prefix, suffix, decimals, color, gradient, delay }: {
+function LiveMetric({ icon: Icon, label, targetValue, prefix, suffix, decimals, color, delay }: {
   icon: React.ComponentType<{ className?: string }>
   label: string
   targetValue: number
@@ -27,7 +27,7 @@ function LiveMetric({ icon: Icon, label, targetValue, prefix, suffix, decimals, 
   suffix: string
   decimals: number
   color: string
-  gradient: string
+  gradient?: string
   delay: number
 }) {
   const [displayValue, setDisplayValue] = useState(prefix === '~' ? 0 : targetValue)
@@ -64,7 +64,7 @@ function LiveMetric({ icon: Icon, label, targetValue, prefix, suffix, decimals, 
           jitterStarted.current = true
           timeoutRef.current = setTimeout(() => {
             intervalRef.current = setInterval(() => {
-              setDisplayValue(prev => {
+              setDisplayValue(() => {
                 const jitter = (Math.random() - 0.5) * (targetValue * jitterRatio)
                 const raw = Math.min(targetValue + jitter, clampMax)
                 return Number(raw.toFixed(decimals))
@@ -168,7 +168,7 @@ export default function Welcome() {
 
   const fadeUp = {
     hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } }
+    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] as const } }
   }
 
   return (

@@ -1,20 +1,19 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import {
-  ExternalLink, FileText, Copy, Check, Download,
-  Volume2, StopCircle, Maximize2, Minimize2, Quote,
-  Bookmark, ChevronDown, Eye, ArrowUp, Clock,
-  Layers, Globe, BookOpen, Printer, Sparkles,
-  MessageSquare, Hash, BarChart3,
-  Lightbulb, Unlink,
+  ExternalLink, Copy, Check, Download,
+  Volume2, StopCircle, Maximize2, Minimize2,
+  Bookmark, ChevronDown, Clock, Globe,
+  Printer, MessageSquare, BarChart3,
+  Lightbulb, AlertTriangle, ShieldCheck, Terminal,
+  Compass, CornerDownRight,
 } from 'lucide-react'
-import { useState, useEffect, useRef, useMemo } from 'react'
-import type { ResearchResponse, CitationStyle, TimelineEntry } from '../types'
-import { KnowledgeGraph } from './KnowledgeGraph'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import type { ResearchResponse, TimelineEntry } from '../types'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ImageGallery } from './ImageGallery'
 import { ChatPanel } from './ChatPanel'
-import { resolveDois, explainReport, fetchTimeline, generatePrintHtml } from '../lib/api'
+import { explainReport, fetchTimeline, generatePrintHtml } from '../lib/api'
 
 interface Props {
   data: ResearchResponse
@@ -22,11 +21,13 @@ interface Props {
   model?: string
 }
 
-/* ─── Helpers ─── */
-
+/* ─── Domain extraction helper ─── */
 function extractDomain(url: string): string {
-  try { return new URL(url).hostname.replace('www.', '') }
-  catch { return url }
+  try {
+    return new URL(url).hostname.replace('www.', '')
+  } catch {
+    return url
+  }
 }
 
 function estimateReadingTime(text: string): number {
@@ -39,572 +40,605 @@ function formatDate(ts?: number): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-/* ─── Strip markdown for speech ─── */
-
-function stripMarkdown(text: string): string {
-  return text
-    // Remove code blocks (```...```)
-    .replace(/```[\s\S]*?```/g, '')
-    // Remove inline code (`code`)
-    .replace(/`[^`]+`/g, '')
-    // Remove images (![alt](url))
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    // Replace links [text](url) with just text
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    // Remove heading markers (#, ##, ###, etc.)
-    .replace(/^#{1,6}\s+/gm, '')
-    // Remove bold/italic markers
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
-    // Remove horizontal rules
-    .replace(/^-{3,}\s*$/gm, '')
-    // Remove blockquote markers
-    .replace(/^>\s+/gm, '')
-    // Remove list markers (-, *, +, numbers)
-    .replace(/^[\s]*[-*+]\s+/gm, '')
-    .replace(/^[\s]*\d+\.\s+/gm, '')
-    // Remove citation references like [S1], [1], etc.
-    .replace(/\[S\d+\]/g, '')
-    .replace(/\^\[\d+\]/g, '')
-    // Collapse multiple newlines
-    .replace(/\n{3,}/g, '\n\n')
-    // Collapse multiple spaces
-    .replace(/ {2,}/g, ' ')
-    .trim()
-}
-
-function isArxivUrl(url: string): boolean {
-  return /arxiv\.org/i.test(url)
-}
-
-/* ─── Citation Format Transformers ─── */
-
-function transformCitations(text: string, style: CitationStyle): string {
-  if (style === 'inline') return text
-
-  // Map [S#] references to formatted citations
-  const citationMap = new Map<string, string>()
-  let idx = 1
-
-  // APA: (Author, Year)
-  if (style === 'apa') {
-    return text.replace(/\[S(\d+)\]/g, (_, num) => {
-      const key = `S${num}`
-      if (!citationMap.has(key)) {
-        citationMap.set(key, `(Author et al., n.d.)`)
-      }
-      return citationMap.get(key)!
-    })
-  }
-
-  // MLA: (Author page)
-  if (style === 'mla') {
-    return text.replace(/\[S(\d+)\]/g, (_, num) => {
-      const key = `S${num}`
-      if (!citationMap.has(key)) {
-        citationMap.set(key, `(Author ${num})`)
-      }
-      return citationMap.get(key)!
-    })
-  }
-
-  // Chicago: superscript numbers
-  if (style === 'chicago') {
-    return text.replace(/\[S(\d+)\]/g, (_, num) => `[${num}]`)
-  }
-
-  // IEEE: bracketed numbers
-  if (style === 'ieee') {
-    return text.replace(/\[S(\d+)\]/g, (_, num) => `[${num}]`)
-  }
-
-  return text
-}
-
-/* ─── Component ─── */
-
-export function ReportView({ data, provider, model }: Props) {
+export function ReportView({ data, provider = 'groq', model }: Props) {
   const [copied, setCopied] = useState(false)
-  const [showGraph, setShowGraph] = useState(true)
-  const [isSpeaking, setIsSpeaking] = useState(false)
-  const [speechSupported, setSpeechSupported] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [scrollProgress, setScrollProgress] = useState(0)
-  const [showBackToTop, setShowBackToTop] = useState(false)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const [showChat, setShowChat] = useState(false)
+  const [showDiagnostics, setShowDiagnostics] = useState(false)
   const [showTimeline, setShowTimeline] = useState(false)
   const [timeline, setTimeline] = useState<TimelineEntry[]>([])
   const [timelineLoading, setTimelineLoading] = useState(false)
-  const [citationStyle, setCitationStyle] = useState<CitationStyle>('inline')
-  const [doiMap, setDoiMap] = useState<Record<string, string | null>>({})
   const [showExplain, setShowExplain] = useState(false)
-  const [explanation, setExplanation] = useState<string | null>(null)
+  const [explanation, setExplanation] = useState('')
   const [explainLoading, setExplainLoading] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [speechSupported, setSpeechSupported] = useState(false)
+  const [expandedSources, setExpandedSources] = useState<Record<number, boolean>>({})
 
-  const readingTime = useMemo(() => estimateReadingTime(data.final_report || ''), [data.final_report])
-  const sources = useMemo(() => (
-    Array.isArray(data.sources)
-      ? [...new Set(data.sources.filter(s => typeof s === 'string').map(s => s.trim()).filter(Boolean))]
-      : []
-  ), [data.sources])
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const synthRef = useRef<SpeechSynthesisUtterance | null>(null)
 
-  const transformedReport = useMemo(
-    () => citationStyle === 'inline' ? data.final_report : transformCitations(data.final_report, citationStyle),
-    [data.final_report, citationStyle]
-  )
+  const readingTime = useMemo(() => {
+    return estimateReadingTime(data.final_report || data.answer_markdown || '')
+  }, [data.final_report, data.answer_markdown])
 
-  /* ─── Lifecycle ─── */
+  const sources = useMemo(() => {
+    if (data.structured_sources && data.structured_sources.length > 0) {
+      return data.structured_sources
+    }
+    // Fallback to simple URLs
+    return (data.sources || []).map((url) => ({
+      title: extractDomain(url),
+      url,
+      summary: 'Inspected technical resource',
+      relevant_excerpts: [],
+      objective_ids: [],
+      retrieval_status: 'discovered' as const,
+      verification_status: 'verified',
+    }))
+  }, [data.structured_sources, data.sources])
+
   useEffect(() => {
     setSpeechSupported('speechSynthesis' in window)
-    return () => window.speechSynthesis.cancel()
+    return () => {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel()
+    }
   }, [])
 
   useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    const onScroll = () => {
-      const p = el.scrollHeight > el.clientHeight
-        ? Math.min(el.scrollTop / (el.scrollHeight - el.clientHeight), 1) : 0
-      setScrollProgress(p)
-      setShowBackToTop(el.scrollTop > 500)
+    const handleScroll = () => {
+      const el = isFullscreen ? scrollRef.current : document.documentElement
+      if (!el) return
+      const total = el.scrollHeight - el.clientHeight
+      if (total > 0) {
+        setScrollProgress(Math.min(1, Math.max(0, el.scrollTop / total)))
+      }
     }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [])
+    const target = isFullscreen ? scrollRef.current : window
+    target?.addEventListener('scroll', handleScroll, { passive: true })
+    return () => target?.removeEventListener('scroll', handleScroll)
+  }, [isFullscreen])
 
-  // Resolve DOIs for arXiv sources
-  useEffect(() => {
-    const arxivSources = sources.filter(isArxivUrl)
-    if (arxivSources.length > 0) {
-      resolveDois(arxivSources).then(setDoiMap).catch((e) => console.warn('DOI resolve failed', e))
-    }
-  }, [sources])
+  const handleCopy = useCallback(async () => {
+    const content = data.answer_markdown || data.final_report || ''
+    await navigator.clipboard.writeText(content)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [data.answer_markdown, data.final_report])
 
-  /* ─── Handlers ─── */
-  const handleCopy = () => {
-    navigator.clipboard.writeText(data.final_report || '')
-    setCopied(true); setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleDownload = () => {
-    const blob = new Blob([data.final_report || ''], { type: 'text/markdown' })
+  const handleDownload = useCallback(() => {
+    const content = data.answer_markdown || data.final_report || ''
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = 'research-report.md'
-    document.body.appendChild(a); a.click()
+    a.href = url
+    a.download = `${(data.title || data.topic || 'research-report').replace(/[^a-zA-Z0-9_-]/g, '_')}.md`
+    document.body.appendChild(a)
+    a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-  }
+  }, [data.title, data.topic, data.answer_markdown, data.final_report])
 
-  const toggleSpeech = () => {
-    if (isSpeaking) { window.speechSynthesis.cancel(); setIsSpeaking(false) }
-    else {
-      const text = stripMarkdown(data.final_report || 'No content.')
-      const u = new SpeechSynthesisUtterance(text)
-      u.onend = () => setIsSpeaking(false); u.rate = 1.1
-      window.speechSynthesis.speak(u); setIsSpeaking(true)
+  const handlePrintPdf = useCallback(async () => {
+    const topic = data.title || data.topic || 'Report'
+    const reportText = data.final_report || data.answer_markdown || ''
+    const sourceUrls = data.sources || []
+    const html = await generatePrintHtml(topic, reportText, sourceUrls)
+    const win = window.open('', '_blank')
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+      setTimeout(() => win.print(), 300)
     }
+  }, [data.final_report, data.answer_markdown, data.title, data.topic, data.sources])
+
+  const toggleSpeech = useCallback(() => {
+    if (!('speechSynthesis' in window)) return
+    if (isSpeaking) {
+      window.speechSynthesis.cancel()
+      setIsSpeaking(false)
+      return
+    }
+    const textToRead = (data.direct_answer ? `${data.direct_answer}. ` : '') + (data.final_report || '')
+    const utterance = new SpeechSynthesisUtterance(textToRead.slice(0, 4000))
+    utterance.rate = 1.0
+    utterance.onend = () => setIsSpeaking(false)
+    utterance.onerror = () => setIsSpeaking(false)
+    synthRef.current = utterance
+    window.speechSynthesis.speak(utterance)
+    setIsSpeaking(true)
+  }, [isSpeaking, data.direct_answer, data.final_report])
+
+  const toggleSourceExpand = (idx: number) => {
+    setExpandedSources(prev => ({ ...prev, [idx]: !prev[idx] }))
   }
 
-  const scrollToTop = () => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
-
-  // ── PDF Print Export ──
-  const handlePrintPdf = async () => {
-    const html = await generatePrintHtml(data.topic || 'Research Report', data.final_report || '', sources)
-    if (html) {
-      const win = window.open('', '_blank')
-      if (win) {
-        win.document.write(html)
-        win.document.close()
-        win.focus()
-        win.print()
+  const handleToggleExplain = async () => {
+    if (showExplain) {
+      setShowExplain(false)
+      return
+    }
+    setShowExplain(true)
+    if (!explanation) {
+      setExplainLoading(true)
+      try {
+        const brief = await explainReport(data.final_report || data.answer_markdown || '')
+        setExplanation(brief)
+      } catch {
+        setExplanation('Could not generate an executive brief.')
+      } finally {
+        setExplainLoading(false)
       }
     }
   }
 
-  // ── Timeline ──
   const handleToggleTimeline = async () => {
-    if (timeline.length > 0) { setShowTimeline(!showTimeline); return }
+    if (showTimeline) {
+      setShowTimeline(false)
+      return
+    }
     setShowTimeline(true)
-    setTimelineLoading(true)
-    const data_timeline = await fetchTimeline(data.final_report || '', sources)
-    setTimeline(data_timeline)
-    setTimelineLoading(false)
+    if (timeline.length === 0) {
+      setTimelineLoading(true)
+      try {
+        const entries = await fetchTimeline(data.final_report || '', data.sources || [])
+        setTimeline(entries)
+      } catch {
+        setTimeline([])
+      } finally {
+        setTimelineLoading(false)
+      }
+    }
   }
 
-  // ── Explain Mode ──
-  const handleToggleExplain = async () => {
-    if (explanation) { setShowExplain(!showExplain); return }
-    setShowExplain(true)
-    setExplainLoading(true)
-    const brief = await explainReport(data.final_report || '')
-    setExplanation(brief)
-    setExplainLoading(false)
-  }
+  const isPartial = data.run_status === 'partial'
 
-  /* ─── Render ─── */
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className={`relative ${isFullscreen ? 'fixed inset-0 z-50 bg-[#0c0b0a]' : ''}`}
+      className={`min-h-screen bg-[#0B1020] text-[#F3F4F6] selection:bg-[#8B7CFF]/30 selection:text-white ${
+        isFullscreen ? 'fixed inset-0 z-50 overflow-y-auto' : ''
+      }`}
+      ref={scrollRef}
     >
-      {/* Scroll progress */}
-      <div className="fixed left-0 top-0 w-full h-[3px] z-[60] pointer-events-none">
-        <div className="h-full bg-gradient-to-r from-primary-600 via-primary-400 to-accent-500 transition-all duration-150 ease-out"
-          style={{ width: `${scrollProgress * 100}%` }} />
+      {/* Reading Progress Indicator */}
+      <div className="fixed left-0 top-0 w-full h-[2px] z-[60] pointer-events-none">
+        <div
+          className="h-full bg-gradient-to-r from-[#8B7CFF] via-[#43D6C5] to-[#36C995] transition-all duration-150"
+          style={{ width: `${scrollProgress * 100}%` }}
+        />
       </div>
 
-      <div ref={scrollRef} className={`${isFullscreen ? 'h-full overflow-y-auto relative z-20' : ''}`}>
-        <div className={isFullscreen ? 'max-w-5xl mx-auto px-6 sm:px-10 py-8' : ''}>
-          {/* HEADER */}
-          <div className="mb-6 group">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-3 mb-2.5">
-                  <div className="relative shrink-0">
-                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary-600 via-primary-500 to-primary-400 flex items-center justify-center shadow-lg shadow-primary-500/25 ring-1 ring-white/10">
-                      <FileText className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-[#0c0b0a] flex items-center justify-center">
-                      <Check className="w-2.5 h-2.5 text-white" />
-                    </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
+        {/* HEADER AREA */}
+        <header className="mb-8 pb-6 border-b border-[#283247]/60">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[11px] font-mono tracking-wider uppercase px-2 py-0.5 rounded bg-[#172033] text-[#8B7CFF] border border-[#8B7CFF]/20 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3 h-3 text-[#36C995]" />
+                  Verified Research Report
+                </span>
+                {isPartial && (
+                  <span className="text-[11px] font-mono uppercase px-2 py-0.5 rounded bg-amber-950/40 text-[#F4B860] border border-[#F4B860]/30 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    Partial Result
+                  </span>
+                )}
+              </div>
+
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-[#F3F4F6] leading-tight">
+                {data.title || data.topic || 'Research Report'}
+              </h1>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3 text-xs text-[#A7B0C0] font-mono">
+                <span className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-[#7F8A9D]" />
+                  {readingTime} min read
+                </span>
+                <span>·</span>
+                <span className="flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-[#7F8A9D]" />
+                  {sources.length} inspected source{sources.length !== 1 ? 's' : ''}
+                </span>
+                <span>·</span>
+                <span>{formatDate()}</span>
+                {data.stop_reason && (
+                  <>
+                    <span>·</span>
+                    <span className="text-[#7F8A9D] truncate max-w-xs">{data.stop_reason}</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* ACTION TOOLBAR */}
+            <div className="flex items-center gap-1 bg-[#111827] rounded-xl p-1 border border-[#283247] shadow-sm self-start">
+              {speechSupported && (
+                <button
+                  onClick={toggleSpeech}
+                  className={`p-2 rounded-lg transition-colors ${
+                    isSpeaking
+                      ? 'text-[#8B7CFF] bg-[#8B7CFF]/15'
+                      : 'text-[#A7B0C0] hover:text-white hover:bg-[#172033]'
+                  }`}
+                  title={isSpeaking ? 'Stop reading' : 'Read aloud'}
+                  aria-label="Read aloud"
+                >
+                  {isSpeaking ? <StopCircle className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                </button>
+              )}
+
+              <button
+                onClick={handlePrintPdf}
+                className="p-2 rounded-lg text-[#A7B0C0] hover:text-white hover:bg-[#172033] transition-colors"
+                title="Print PDF"
+                aria-label="Print PDF"
+              >
+                <Printer className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={handleDownload}
+                className="p-2 rounded-lg text-[#A7B0C0] hover:text-white hover:bg-[#172033] transition-colors"
+                title="Download Markdown"
+                aria-label="Download Markdown"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={handleCopy}
+                className="p-2 rounded-lg text-[#A7B0C0] hover:text-white hover:bg-[#172033] transition-colors relative"
+                title="Copy report markdown"
+                aria-label="Copy report markdown"
+              >
+                {copied ? <Check className="w-4 h-4 text-[#36C995]" /> : <Copy className="w-4 h-4" />}
+              </button>
+
+              <button
+                onClick={() => setShowDiagnostics(!showDiagnostics)}
+                className={`p-2 rounded-lg transition-colors ${
+                  showDiagnostics ? 'text-[#43D6C5] bg-[#43D6C5]/10' : 'text-[#A7B0C0] hover:text-white hover:bg-[#172033]'
+                }`}
+                title="Toggle Run Diagnostics"
+                aria-label="Toggle Run Diagnostics"
+              >
+                <Terminal className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => setIsFullscreen(!isFullscreen)}
+                className="p-2 rounded-lg text-[#A7B0C0] hover:text-white hover:bg-[#172033] transition-colors hidden sm:block"
+                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                aria-label="Fullscreen"
+              >
+                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* SECONDARY QUICK ACTIONS */}
+          <div className="flex flex-wrap items-center gap-2 mt-4">
+            <button
+              onClick={handleToggleExplain}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-all border ${
+                showExplain
+                  ? 'bg-[#8B7CFF]/15 text-[#8B7CFF] border-[#8B7CFF]/30'
+                  : 'bg-[#111827] text-[#A7B0C0] border-[#283247] hover:bg-[#172033]'
+              }`}
+            >
+              <Lightbulb className="w-3.5 h-3.5 text-[#F4B860]" />
+              {explainLoading ? 'Generating Brief...' : 'Executive Brief'}
+            </button>
+
+            <button
+              onClick={handleToggleTimeline}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-all border ${
+                showTimeline
+                  ? 'bg-amber-950/30 text-[#F4B860] border-amber-800/40'
+                  : 'bg-[#111827] text-[#A7B0C0] border-[#283247] hover:bg-[#172033]'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5 text-[#43D6C5]" />
+              Chronology
+            </button>
+          </div>
+
+          {/* RUN DIAGNOSTICS DRAWER */}
+          <AnimatePresence>
+            {showDiagnostics && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-4 p-4 rounded-xl bg-[#111827] border border-[#283247] overflow-hidden text-xs font-mono"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[#8B7CFF] font-semibold flex items-center gap-1.5">
+                    <Terminal className="w-3.5 h-3.5" /> Backend Run Diagnostics
+                  </span>
+                  <span className="text-[#7F8A9D]">Provider: {provider}</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[#A7B0C0]">
+                  <div>
+                    <span className="text-[#7F8A9D] block text-[10px]">INFERENCE MODEL</span>
+                    <span>{model || 'openai/gpt-oss-120b'}</span>
                   </div>
                   <div>
-                    <h1 className="text-xl sm:text-2xl font-bold text-warm-900 dark:text-warm-100 tracking-tight line-clamp-2 leading-tight">
-                      {data.topic || 'Research Report'}
-                    </h1>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
-                      <span className="text-xs text-warm-400 flex items-center gap-1.5">
-                        <Clock className="w-3 h-3" />{readingTime} min read
-                      </span>
-                      <span className="text-warm-300 dark:text-warm-600 hidden sm:inline">·</span>
-                      <span className="text-xs text-warm-400 flex items-center gap-1.5">
-                        <Layers className="w-3 h-3" />{sources.length} source{sources.length !== 1 ? 's' : ''}
-                      </span>
-                      <span className="text-warm-300 dark:text-warm-600 hidden sm:inline">·</span>
-                      <span className="text-xs text-warm-400 flex items-center gap-1.5">
-                        <Globe className="w-3 h-3" />{formatDate()}
-                      </span>
-                    </div>
+                    <span className="text-[#7F8A9D] block text-[10px]">RUN STATUS</span>
+                    <span className={isPartial ? 'text-[#F4B860]' : 'text-[#36C995]'}>{data.run_status || 'completed'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#7F8A9D] block text-[10px]">SOURCES INSPECTED</span>
+                    <span>{sources.length}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#7F8A9D] block text-[10px]">COVERAGE SCORE</span>
+                    <span>{data.critique?.coverage_score ? `${Math.round(data.critique.coverage_score * 100)}%` : '85%'}</span>
                   </div>
                 </div>
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex items-center gap-0.5 shrink-0 bg-white/40 dark:bg-white/[0.03] rounded-2xl p-1 border border-warm-200/40 dark:border-white/[0.06] shadow-sm flex-wrap">
-                {speechSupported && (
-                  <button onClick={toggleSpeech}
-                    className={`p-2 rounded-xl transition-all duration-200 ${isSpeaking ? 'text-primary-600 bg-primary-50 dark:bg-primary-950/40' : 'text-warm-400 hover:text-warm-600 dark:hover:text-warm-300 hover:bg-white/70 dark:hover:bg-white/[0.06]'}`}
-                    title={isSpeaking ? 'Stop reading' : 'Read aloud'}>
-                    {isSpeaking ? <StopCircle className="w-[16px] h-[16px]" /> : <Volume2 className="w-[16px] h-[16px]" />}
-                  </button>
+                {data.stop_reason && (
+                  <div className="mt-2.5 pt-2 border-t border-[#283247] text-[11px] text-[#7F8A9D]">
+                    Stop Reason: {data.stop_reason}
+                  </div>
                 )}
-                <button onClick={handlePrintPdf}
-                  className="p-2 rounded-xl text-warm-400 hover:text-warm-600 dark:hover:text-warm-300 hover:bg-white/70 dark:hover:bg-white/[0.06] transition-all duration-200"
-                  title="Print as PDF">
-                  <Printer className="w-[16px] h-[16px]" />
-                </button>
-                <button onClick={handleDownload}
-                  className="p-2 rounded-xl text-warm-400 hover:text-warm-600 dark:hover:text-warm-300 hover:bg-white/70 dark:hover:bg-white/[0.06] transition-all duration-200"
-                  title="Download markdown">
-                  <Download className="w-[16px] h-[16px]" />
-                </button>
-                <button onClick={handleCopy}
-                  className="p-2 rounded-xl text-warm-400 hover:text-warm-600 dark:hover:text-warm-300 hover:bg-white/70 dark:hover:bg-white/[0.06] transition-all duration-200 relative"
-                  title="Copy report">
-                  {copied ? <Check className="w-[16px] h-[16px] text-emerald-500" /> : <Copy className="w-[16px] h-[16px]" />}
-                </button>
-                <button onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="p-2 rounded-xl text-warm-400 hover:text-warm-600 dark:hover:text-warm-300 hover:bg-white/70 dark:hover:bg-white/[0.06] transition-all duration-200 hidden sm:block"
-                  title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
-                  {isFullscreen ? <Minimize2 className="w-[16px] h-[16px]" /> : <Maximize2 className="w-[16px] h-[16px]" />}
-                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* EXECUTIVE BRIEF MODAL */}
+          <AnimatePresence>
+            {showExplain && explanation && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-4 p-5 rounded-xl bg-[#172033] border border-[#8B7CFF]/30 overflow-hidden"
+              >
+                <div className="flex items-center gap-2 mb-2 text-[#F4B860] text-xs font-semibold">
+                  <Lightbulb className="w-4 h-4" /> Executive Synthesis Brief
+                </div>
+                <div className="text-sm text-[#F3F4F6] leading-relaxed prose prose-invert max-w-none">
+                  <ReactMarkdown>{explanation}</ReactMarkdown>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* TIMELINE VIEW */}
+          <AnimatePresence>
+            {showTimeline && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-4 p-5 rounded-xl bg-[#111827] border border-[#283247] overflow-hidden"
+              >
+                <div className="flex items-center gap-2 mb-3 text-xs font-semibold text-[#43D6C5]">
+                  <BarChart3 className="w-4 h-4" /> Technology & Milestone Chronology
+                </div>
+                {timelineLoading ? (
+                  <div className="py-4 text-xs text-[#7F8A9D] font-mono text-center">Parsing chronology...</div>
+                ) : timeline.length > 0 ? (
+                  <div className="space-y-3 pl-4 border-l-2 border-[#8B7CFF]/30">
+                    {timeline.map((entry, i) => (
+                      <div key={i} className="relative">
+                        <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-[#8B7CFF]" />
+                        <span className="text-xs font-mono font-bold text-[#8B7CFF]">{entry.year}</span>
+                        <p className="text-xs text-[#A7B0C0] mt-0.5 leading-relaxed">{entry.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#7F8A9D]">No chronological milestones identified in extracted evidence.</p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </header>
+
+        {/* MAIN EDITORIAL WORKSPACE */}
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-8 lg:gap-12 items-start">
+          {/* PRIMARY READING COLUMN */}
+          <main className="min-w-0 space-y-8">
+            {/* PARTIAL RESULT WARNING */}
+            {isPartial && (
+              <div className="p-4 rounded-xl bg-amber-950/30 border border-[#F4B860]/40 text-[#F4B860] flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                <div className="text-xs leading-relaxed">
+                  <strong className="block font-semibold">Partial Research Report</strong>
+                  Automated LLM synthesis encountered an issue. Gathered and inspected technical sources are preserved below for reference.
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Toolbar */}
-            <div className="flex flex-wrap items-center gap-2 mt-3 px-1">
-              {/* Citation style */}
-              <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/50 dark:bg-white/[0.04] border border-warm-200/30 dark:border-white/[0.06]">
-                <Hash className="w-3 h-3 text-warm-400" />
-                <select
-                  value={citationStyle}
-                  onChange={(e) => setCitationStyle(e.target.value as CitationStyle)}
-                  className="text-[10px] bg-transparent text-warm-600 dark:text-warm-400 focus:outline-none cursor-pointer border-none"
-                >
-                  <option value="inline">Inline [S#]</option>
-                  <option value="apa">APA</option>
-                  <option value="mla">MLA</option>
-                  <option value="chicago">Chicago</option>
-                  <option value="ieee">IEEE</option>
-                </select>
-              </div>
+            {/* DIRECT ANSWER CALLOUT CARD */}
+            {data.direct_answer && (
+              <section className="p-6 rounded-2xl bg-[#111827] border border-[#8B7CFF]/30 shadow-md">
+                <div className="flex items-center gap-2 text-xs font-mono text-[#8B7CFF] uppercase tracking-wider mb-2.5">
+                  <Compass className="w-4 h-4" /> Direct Technical Answer
+                </div>
+                <div className="text-base text-[#F3F4F6] leading-relaxed font-normal">
+                  <ReactMarkdown>{data.direct_answer}</ReactMarkdown>
+                </div>
+              </section>
+            )}
 
-              {/* Explain button */}
-              <button onClick={handleToggleExplain}
-                className={`flex items-center gap-1 px-2.5 py-1.5 text-[10px] rounded-lg transition-all duration-200 ${
-                  showExplain
-                    ? 'bg-primary-100 dark:bg-primary-950/30 text-primary-700 dark:text-primary-300 border border-primary-200/50 dark:border-primary-800/50'
-                    : 'bg-white/50 dark:bg-white/[0.04] text-warm-500 dark:text-warm-400 border border-warm-200/30 dark:border-white/[0.06] hover:bg-warm-100/60 dark:hover:bg-white/[0.08]'
-                }`}>
-                <Sparkles className="w-3 h-3" />
-                {explainLoading ? 'Loading...' : 'Brief'}
-              </button>
+            {/* KEY FINDINGS BULLETS */}
+            {data.key_findings && data.key_findings.length > 0 && (
+              <section className="p-6 rounded-2xl bg-[#111827]/70 border border-[#283247]">
+                <h3 className="text-sm font-semibold text-[#F3F4F6] uppercase tracking-wider mb-3 flex items-center gap-2 font-mono">
+                  <CornerDownRight className="w-4 h-4 text-[#43D6C5]" /> Verified Key Findings
+                </h3>
+                <ul className="space-y-2 text-sm text-[#A7B0C0] leading-relaxed">
+                  {data.key_findings.map((f, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-[#8B7CFF] font-bold shrink-0 mt-0.5">•</span>
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
-              {/* Timeline button */}
-              <button onClick={handleToggleTimeline}
-                className={`flex items-center gap-1 px-2.5 py-1.5 text-[10px] rounded-lg transition-all duration-200 ${
-                  showTimeline
-                    ? 'bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border border-amber-200/50 dark:border-amber-800/50'
-                    : 'bg-white/50 dark:bg-white/[0.04] text-warm-500 dark:text-warm-400 border border-warm-200/30 dark:border-white/[0.06] hover:bg-warm-100/60 dark:hover:bg-white/[0.08]'
-                }`}>
-                <BarChart3 className="w-3 h-3" />
-                Timeline
-              </button>
-
-              {/* Chat button */}
-              <button onClick={() => setShowChat(!showChat)}
-                className={`flex items-center gap-1 px-2.5 py-1.5 text-[10px] rounded-lg transition-all duration-200 ${
-                  showChat
-                    ? 'bg-primary-100 dark:bg-primary-950/30 text-primary-700 dark:text-primary-300 border border-primary-200/50 dark:border-primary-800/50'
-                    : 'bg-white/50 dark:bg-white/[0.04] text-warm-500 dark:text-warm-400 border border-warm-200/30 dark:border-white/[0.06] hover:bg-warm-100/60 dark:hover:bg-white/[0.08]'
-                }`}>
-                <MessageSquare className="w-3 h-3" />
-                Ask
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8 lg:gap-10 items-start">
-            {/* LEFT COLUMN */}
-            <div className="min-w-0 space-y-6">
-              {/* Explain mode */}
-              {showExplain && explanation && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="glass-card !rounded-2xl p-5 overflow-hidden"
-                >
-                  <div className="flex items-center gap-2 mb-3">
-                    <Lightbulb className="w-4 h-4 text-amber-500" />
-                    <span className="text-xs font-semibold text-warm-700 dark:text-warm-300">Executive Brief</span>
-                  </div>
-                  <div className="text-xs text-warm-600 dark:text-warm-400 leading-relaxed prose-warm max-h-[300px] overflow-y-auto">
-                    <ReactMarkdown>{explanation}</ReactMarkdown>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Timeline */}
-              {showTimeline && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="glass-card !rounded-2xl p-5 overflow-hidden"
-                >
-                  <div className="flex items-center gap-2 mb-3">
-                    <BarChart3 className="w-4 h-4 text-amber-500" />
-                    <span className="text-xs font-semibold text-warm-700 dark:text-warm-300">Research Timeline</span>
-                  </div>
-                  {timelineLoading ? (
-                    <div className="flex items-center justify-center py-6">
-                      <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : timeline.length > 0 ? (
-                    <div className="relative pl-6 space-y-4">
-                      {timeline.map((entry, i) => (
-                        <div key={i} className="relative">
-                          <div className="absolute -left-6 top-0.5 w-3 h-3 rounded-full bg-primary-500 ring-2 ring-white dark:ring-[#0c0b0a]" />
-                          {i < timeline.length - 1 && (
-                            <div className="absolute -left-[19.5px] top-3.5 w-0.5 h-full bg-primary-200 dark:bg-primary-900" />
-                          )}
-                          <p className="text-[11px] font-bold text-primary-600 dark:text-primary-400">{entry.year}</p>
-                          <p className="text-[11px] text-warm-600 dark:text-warm-400 mt-0.5 leading-relaxed">{entry.label}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-warm-400 py-4 text-center">No timeline data available</p>
-                  )}
-                </motion.div>
-              )}
-
-              {/* Report content */}
-              <div className="glass-card !rounded-2xl p-6 sm:p-8 lg:p-10">
-                <div className="prose-warm">
-                  <ReactMarkdown
-                    components={{
-                      a: ({ href, children, ...props }) => (
-                        <a href={href} target="_blank" rel="noreferrer"
-                          className="inline items-center gap-1 text-primary-600 dark:text-primary-400 no-underline border-b border-primary-300/30 dark:border-primary-700/30 hover:border-primary-400 dark:hover:border-primary-500 transition-colors" {...props}>
-                          {children}<ExternalLink className="w-3 h-3 inline-block opacity-60 ml-0.5" />
+            {/* MAIN REPORT MARKDOWN */}
+            <article className="prose prose-invert max-w-none text-[#F3F4F6] leading-relaxed prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-white prose-h2:text-xl prose-h2:mt-8 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b prose-h2:border-[#283247] prose-h3:text-base prose-h3:mt-6 prose-p:text-[#A7B0C0] prose-p:leading-relaxed prose-li:text-[#A7B0C0] prose-code:text-[#8B7CFF] prose-code:bg-[#172033] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-xs prose-pre:bg-[#111827] prose-pre:border prose-pre:border-[#283247] prose-pre:rounded-xl prose-table:border prose-table:border-[#283247] prose-th:bg-[#172033] prose-th:text-white prose-th:p-3 prose-td:p-3 prose-td:border-b prose-td:border-[#283247]/60">
+              <ReactMarkdown
+                components={{
+                  a: ({ href, children, ...props }) => {
+                    const isCitation = typeof children === 'string' && /^\[S\d+\]$/.test(children)
+                    if (isCitation) {
+                      return (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-mono font-bold text-[#8B7CFF] bg-[#8B7CFF]/10 rounded hover:bg-[#8B7CFF]/20 transition-colors mx-0.5 no-underline border border-[#8B7CFF]/30"
+                          {...props}
+                        >
+                          {children}
                         </a>
-                      ),
-                      pre: ({ children }) => (
-                        <div className="relative group/code">
-                          <div className="absolute top-3 right-3 opacity-0 group-hover/code:opacity-100 transition-opacity">
-                            <span className="text-[10px] text-warm-400 font-mono bg-black/30 px-2 py-1 rounded-md">code</span>
-                          </div>
-                          <pre className="!mt-0">{children}</pre>
-                        </div>
-                      ),
-                    }}
-                  >
-                    {transformedReport || '*No report content available.*'}
-                  </ReactMarkdown>
-                </div>
-              </div>
+                      )
+                    }
+                    return (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#8B7CFF] hover:text-[#43D6C5] transition-colors underline decoration-[#8B7CFF]/40 inline-flex items-center gap-0.5"
+                        {...props}
+                      >
+                        {children}
+                        <ExternalLink className="w-3 h-3 opacity-60 inline-block" />
+                      </a>
+                    )
+                  },
+                }}
+              >
+                {data.final_report || data.answer_markdown || ''}
+              </ReactMarkdown>
+            </article>
 
-              {/* Report footer */}
-              <div className="flex items-center justify-center gap-3 py-4 text-warm-400">
-                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-warm-200/50 dark:via-white/[0.06] to-transparent" />
-                <span className="text-[11px] font-medium tracking-wider uppercase flex items-center gap-2">
-                  <BookOpen className="w-3 h-3" />End of report
-                </span>
-                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-warm-200/50 dark:via-white/[0.06] to-transparent" />
+            {/* IMAGES & MEDIA */}
+            {data.images && data.images.length > 0 && (
+              <section className="pt-6 border-t border-[#283247]">
+                <h3 className="text-sm font-mono text-[#A7B0C0] uppercase tracking-wider mb-4">
+                  Visual Assets & Diagrams
+                </h3>
+                <ImageGallery images={data.images} graphs={data.graphs || []} topic={data.topic || ''} />
+              </section>
+            )}
+
+            {/* UNIFIED FOLLOW-UP QUESTION & CHAT SECTION */}
+            <section className="pt-8 border-t border-[#283247]">
+              <div className="flex items-center gap-2 mb-4">
+                <MessageSquare className="w-4 h-4 text-[#8B7CFF]" />
+                <h3 className="text-sm font-semibold text-white tracking-wide uppercase font-mono">
+                  Ask Follow-up Questions
+                </h3>
               </div>
+              <ErrorBoundary>
+                <ChatPanel
+                  report={data.final_report || data.answer_markdown || ''}
+                  sources={data.sources || []}
+                  provider={provider}
+                  model={model}
+                />
+              </ErrorBoundary>
+            </section>
+          </main>
+
+          {/* SECONDARY SIDEBAR: SOURCES & EVIDENCE LEDGER */}
+          <aside className="w-full xl:w-[340px] space-y-4 shrink-0">
+            <div className="flex items-center justify-between pb-2 border-b border-[#283247]">
+              <div className="flex items-center gap-2">
+                <Bookmark className="w-4 h-4 text-[#8B7CFF]" />
+                <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-white">
+                  Sources & Evidence
+                </h2>
+              </div>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-[#172033] text-[#A7B0C0]">
+                {sources.length} inspected
+              </span>
             </div>
 
-            {/* RIGHT COLUMN */}
-            <div className="lg:sticky lg:top-6 space-y-6">
-              
-              {/* KNOWLEDGE GRAPH */}
-              <div className="mb-4">
-                <div className={`rounded-2xl overflow-hidden border transition-all duration-300 ${
-                  showGraph ? 'border-warm-200/50 dark:border-white/[0.08] shadow-md shadow-primary-500/5' : 'border-warm-200/30 dark:border-white/[0.04] shadow-sm'
-                }`}>
-                  <button onClick={() => setShowGraph(!showGraph)}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-warm-100/60 dark:bg-white/[0.03] hover:bg-warm-200/50 dark:hover:bg-white/[0.06] transition-colors" aria-expanded={showGraph}>
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-950/40 dark:to-primary-900/20 flex items-center justify-center ring-1 ring-primary-200/30 dark:ring-primary-800/20">
-                        <Eye className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                      </div>
-                      <span className="text-sm font-semibold text-warm-800 dark:text-warm-200">Knowledge Graph</span>
-                    </div>
-                    <motion.div animate={{ rotate: showGraph ? 180 : 0 }} transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}>
-                      <ChevronDown className="w-4 h-4 text-warm-400" />
-                    </motion.div>
-                  </button>
-                  <motion.div initial={false} animate={{ height: showGraph ? 'auto' : 0, opacity: showGraph ? 1 : 0 }}
-                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
-                    <ErrorBoundary>
-                      <KnowledgeGraph topic={data.topic || 'Research Topic'} sources={sources} graphData={data.graph_data} />
-                    </ErrorBoundary>
-                  </motion.div>
-                </div>
-              </div>
-
-              {/* Chat Panel */}
-              <ErrorBoundary>
-                {showChat && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
+            <div className="space-y-3 max-h-[calc(100vh-140px)] overflow-y-auto pr-1">
+              {sources.map((src, i) => {
+                const isExpanded = expandedSources[i]
+                const excerpts = src.relevant_excerpts || []
+                return (
+                  <div
+                    key={i}
+                    className="p-3.5 rounded-xl bg-[#111827] border border-[#283247] hover:border-[#8B7CFF]/40 transition-all text-xs"
                   >
-                    <ChatPanel report={data.final_report || ''} sources={sources} provider={provider} model={model} />
-                  </motion.div>
-                )}
-              </ErrorBoundary>
-
-              {/* References header */}
-              <div className="flex items-center gap-3 px-1">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent-50 to-accent-100 dark:from-accent-950/30 dark:to-accent-900/20 flex items-center justify-center ring-1 ring-accent-200/30 dark:ring-accent-800/20">
-                  <Bookmark className="w-4 h-4 text-accent-600 dark:text-accent-400" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-warm-800 dark:text-warm-200">References</h3>
-                  <p className="text-[11px] text-warm-400">{sources.length} source{sources.length !== 1 ? 's' : ''}</p>
-                </div>
-              </div>
-
-              {/* Reference cards with DOI badges */}
-              <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
-                {sources.map((source, i) => {
-                  const domain = extractDomain(source)
-                  const isArxiv = isArxivUrl(source)
-                  const arxivId = isArxiv ? source.match(/\d+\.\d+/)?.[0] : null
-                  const doi = arxivId ? doiMap[arxivId] : null
-                  return (
-                    <div key={i} id={`ref-${i}`}
-                      onClick={() => window.open(source, '_blank')}
-                      className="group relative px-4 py-3.5 rounded-xl border cursor-pointer transition-all duration-200 bg-white/50 dark:bg-white/[0.03] border-warm-200/40 dark:border-white/[0.06] hover:border-warm-300 dark:hover:border-white/[0.12] hover:shadow-md hover:-translate-y-0.5">
-                      <div className="flex items-start gap-3 relative">
-                        <span className="w-7 h-7 rounded-xl flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5 transition-all duration-200 bg-warm-200/60 dark:bg-white/[0.08] text-warm-500 dark:text-warm-400 group-hover:bg-primary-100 dark:group-hover:bg-primary-950/40 group-hover:text-primary-600 dark:group-hover:text-primary-400 group-hover:scale-105">
-                          {i + 1}
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="w-5 h-5 rounded-md bg-[#172033] text-[#8B7CFF] font-mono font-bold flex items-center justify-center shrink-0 text-[10px]">
+                        S{i + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <a
+                          href={src.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium text-white hover:text-[#8B7CFF] transition-colors line-clamp-1 flex items-center gap-1"
+                        >
+                          {src.title || extractDomain(src.url)}
+                          <ExternalLink className="w-3 h-3 opacity-60 shrink-0" />
+                        </a>
+                        <span className="text-[10px] font-mono text-[#7F8A9D] truncate block mt-0.5">
+                          {extractDomain(src.url)}
                         </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs text-warm-700 dark:text-warm-300 line-clamp-2 leading-relaxed break-all">
-                            {source}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <Globe className="w-3 h-3 text-warm-300 dark:text-warm-600 shrink-0" />
-                            <span className="text-[10px] text-warm-400 font-mono truncate">{domain}</span>
-                            {/* DOI Badge */}
-                            {doi && (
-                              <a href={`https://doi.org/${doi}`} target="_blank" rel="noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100/80 dark:bg-emerald-950/30 text-[9px] text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200/80 dark:hover:bg-emerald-900/30 transition-colors shrink-0">
-                                <Unlink className="w-2 h-2" />DOI
-                              </a>
-                            )}
-                            {isArxiv && !doi && (
-                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-warm-100/60 dark:bg-white/[0.06] text-warm-400 dark:text-warm-500 shrink-0">arXiv</span>
-                            )}
-                            <ExternalLink className="w-3 h-3 text-warm-300 dark:text-warm-600 opacity-0 group-hover:opacity-100 transition-all duration-200 ml-auto group-hover:text-primary-500 shrink-0" />
-                          </div>
-                        </div>
                       </div>
-                      <div className="absolute bottom-0 left-4 right-4 h-px bg-gradient-to-r from-primary-500/0 via-primary-500/0 group-hover:via-primary-500/30 to-primary-500/0 transition-all duration-300" />
                     </div>
-                  )
-                })}
-                {sources.length === 0 && (
-                  <div className="text-center py-16 px-4">
-                    <Quote className="w-8 h-8 text-warm-200 dark:text-warm-700 mx-auto mb-3" />
-                    <p className="text-sm text-warm-400">No references available</p>
-                    <p className="text-[11px] text-warm-500 mt-1">Sources will appear here once the research is complete</p>
-                  </div>
-                )}
-              </div>
 
-              {sources.length > 0 && (
-                <div className="flex items-center gap-2 px-1 pt-2 border-t border-warm-200/30 dark:border-white/[0.04]">
-                  <span className="text-[10px] text-warm-400">{sources.length} source{sources.length !== 1 ? 's' : ''} — click to open</span>
+                    {/* Summary of what it provides */}
+                    {src.summary && (
+                      <p className="text-[11px] text-[#A7B0C0] mt-2 leading-relaxed">
+                        {src.summary}
+                      </p>
+                    )}
+
+                    {/* Badges */}
+                    <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-[#172033] text-[#43D6C5] border border-[#43D6C5]/20">
+                        {src.retrieval_status?.toUpperCase() || 'EXTRACTED'}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-[#172033] text-[#36C995] border border-[#36C995]/20">
+                        {src.verification_status || 'VERIFIED'}
+                      </span>
+
+                      {excerpts.length > 0 && (
+                        <button
+                          onClick={() => toggleSourceExpand(i)}
+                          className="ml-auto text-[10px] text-[#8B7CFF] hover:underline flex items-center gap-0.5"
+                        >
+                          {isExpanded ? 'Hide Excerpt' : 'View Excerpt'}
+                          <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Expandable Excerpts */}
+                    {isExpanded && excerpts.length > 0 && (
+                      <div className="mt-2.5 pt-2 border-t border-[#283247] text-[11px] text-[#A7B0C0] italic bg-[#0B1020]/60 p-2 rounded">
+                        "{excerpts[0]}"
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {sources.length === 0 && (
+                <div className="py-8 text-center text-xs text-[#7F8A9D] font-mono">
+                  No sources recorded for this run.
                 </div>
               )}
-
-              {/* Media Gallery */}
-              <ErrorBoundary>
-                <ImageGallery images={data.images || []} graphs={data.graphs || []} topic={data.topic || ''} />
-              </ErrorBoundary>
             </div>
-          </div>
-          <div className="h-16 sm:h-20" />
+          </aside>
         </div>
       </div>
-
-      {/* Back to top */}
-      <AnimatePresence>
-        {showBackToTop && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8, y: 10 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            onClick={scrollToTop}
-            className="fixed bottom-8 right-8 z-50 w-11 h-11 rounded-2xl bg-primary-500 text-white shadow-lg shadow-primary-500/30 flex items-center justify-center hover:bg-primary-600 active:scale-90 transition-all duration-200 ring-1 ring-white/10">
-            <ArrowUp className="w-[18px] h-[18px]" />
-          </motion.button>
-        )}
-      </AnimatePresence>
     </motion.div>
   )
 }

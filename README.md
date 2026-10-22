@@ -1,425 +1,258 @@
-# Multi-Agent Research System
-### Autonomous Academic Research with Multi-Agent Verification
+# RAVEN — Project Intelligence & Research Agent
 
 <p align="left">
-<img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" />
-<img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black" />
-<img src="https://img.shields.io/badge/LangGraph-Multi--Agent-14b8a6?style=flat-square" />
-<img src="https://img.shields.io/badge/Local-Ollama-orange?style=flat-square" />
-<img src="https://img.shields.io/badge/Cloud-10%2B%20Providers-6366f1?style=flat-square" />
-<img src="https://img.shields.io/badge/Benchmarks-8%20suites%20passing-brightgreen?style=flat-square" />
+<img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white" />
+<img src="https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite-61DAFB?style=flat-square&logo=react&logoColor=black" />
+<img src="https://img.shields.io/badge/Orchestrator-LangGraph-14b8a6?style=flat-square" />
+<img src="https://img.shields.io/badge/LLM-Groq%20Multi--Key%20Chain-f55036?style=flat-square" />
+<img src="https://img.shields.io/badge/Workflow-Mermaid%20Live-ff3670?style=flat-square" />
+<img src="https://img.shields.io/badge/Storage-SQLite%20FTS5%20%2B%20JSON-10b981?style=flat-square" />
+<img src="https://img.shields.io/badge/Evaluations-131%20Tests%20Passing-brightgreen?style=flat-square" />
 <img src="https://img.shields.io/badge/License-MIT-6366f1?style=flat-square" />
 </p>
 
-> An autonomous, multi-agent system that performs deep academic research, analyzes complex papers, and synthesizes comprehensive reviews with verified citations. Three agents - Researcher, Analyst, Critic - collaborate in a feedback loop with up to 3 revision passes, streamed live over Server-Sent Events, with a React 19 frontend for exploring the resulting knowledge graph, images, citations, and follow-up chat.
+> **RAVEN** is a multi-agent Project Intelligence & Research Agent. It takes either an **idea/research query** or an **existing local codebase** (in read-only mode), plans research objectives, gathers multi-source evidence concurrently across 6 source tunnels, deeply inspects web pages and GitHub repositories (READMEs, releases, commit activity), verifies freshness and reachability, critiques coverage in an active gap-loop, evaluates run quality metrics with LangSmith tracing, and synthesizes evidence-grounded reports with verified citations.
 
 ---
 
 ## Table of Contents
 
-- [The Problem](#the-problem)
-- [Key Result](#key-result)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Benchmarks](#benchmarks)
-- [Repository Structure](#repository-structure)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Citation](#citation)
+1. [System Workflow](#1-system-workflow)
+2. [Technology Stack](#2-technology-stack)
+3. [Deep Resource Intelligence & Extraction](#3-deep-resource-intelligence--extraction)
+4. [Layered Memory & Storage Architecture](#4-layered-memory--storage-architecture)
+5. [Evaluation, LangSmith & Continuous Learning](#5-evaluation-langsmith--continuous-learning)
+6. [API Specification & Endpoints](#6-api-specification--endpoints)
+7. [Resilient Groq Key-Chaining](#7-resilient-groq-key-chaining)
+8. [Installation & Setup](#8-installation--setup)
+9. [Running the Application](#9-running-the-application)
+10. [Running Tests](#10-running-tests)
+11. [Architecture Documents](#11-architecture-documents)
 
 ---
 
-## The Problem
+## 1. System Workflow
 
-Deep research is a synthesis problem disguised as a search problem. A single LLM call against a topic produces fluent prose with no guarantee any of it is true - sources get invented, numbers get rounded into confidence they haven't earned, and there is no mechanism that catches a hallucinated claim before it reaches the reader. Manual literature review avoids this failure mode but doesn't scale: reading, ranking, and cross-referencing dozens of papers by hand is exactly the kind of high-volume, well-defined cognitive labor automation should be doing.
+RAVEN coordinates 10 agent and tunnel nodes on **LangGraph**. The workflow enforces a shared run budget and dynamic critique loop:
 
-The core requirement is not "generate a report." It is "generate a report that has been checked."
-
-**Multi-Agent Research System answers this by never letting a single model both write and grade its own work.**
-
----
-
-## Key Result
-
-> **Every non-LLM stage of the pipeline - chunking, ranking, citation validation, DOI resolution, PDF extraction, knowledge graph construction, and prompt assembly - runs in single-digit milliseconds or less, with cached image search 10,184x faster than a cold DDGS query.**
-
-The system's latency budget is spent entirely on LLM calls (research, drafting, critique), not on infrastructure. See [Benchmarks](#benchmarks) for the full 8-suite breakdown, including where the pipeline is genuinely fast (chunking: up to 2.36B chars/s) and where it is comparatively the bottleneck (PDF extraction: 11–69ms per document).
-
----
-
-## Architecture
-
-A Researcher gathers sources, an Analyst drafts the synthesis, and a Critic - running as a genuinely separate pass - scores the draft for hallucinated claims, unsupported numbers, and citation integrity before anything ships. If the score falls short, the draft goes back for revision, up to three times. The whole loop is built on LangGraph and streamed live over Server-Sent Events.
-
-```
-Research Topic
-      |
-      v
-+-------------------+
-|  Researcher       |  Parallel Tavily + DuckDuckGo search
-|                    |  Academic domain filtering (arxiv.org, .edu, .ac.uk)
-|                    |  PDF parsing (PyMuPDF), reference-section stripping
-+---------+----------+
-          |
-          v
-+-------------------+
-|  Analyst           |  High-density synthesis (2400+ words, deep mode)
-|                    |  Thematic grouping into structured Markdown sections
-+---------+----------+
-          |
-          v
-+-------------------+
-|  Critic             |  Hallucination + vague-claim detection
-|                    |  Quantitative enforcement (rejects unsupported numbers)
-+---------+----------+
-          |
-   score < threshold?
-     |          |
-    yes         no
-     |          |
-     v          v
-  revise      ship
- (max 3x)    report
-```
-
-| Layer | Technology |
-|---|---|
-| **Agent Orchestration** | LangGraph, LangChain |
-| **Backend** | Python, FastAPI, Server-Sent Events |
-| **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v4, Framer Motion |
-| **LLM Engine (Local)** | Ollama (Llama 3, Mistral, etc.) |
-| **LLM Engine (Cloud)** | OpenAI, Anthropic, Google, DeepSeek, Mistral, Groq, Perplexity, Together, OpenRouter |
-| **Search** | Tavily API + DuckDuckGo fallback |
-| **Images** | DuckDuckGo Image Search (DDGS), 1-hour in-memory cache |
-| **PDF** | PyMuPDF (Fitz) |
-| **Graphs** | React Force Graph (2D) |
-| **Auth** | WebAuthn PRF (biometric unlock) + PBKDF2 encryption |
-
----
-
-## Features
-
-| Feature | Description |
-| :--- | :--- |
-| **Multi-agent pipeline** | Three autonomous agents (Researcher, Analyst, Critic) collaborate in a feedback loop with up to 3 revision passes |
-| **Academic search** | Searches ArXiv and PDF repositories, parses full-text documents, ranks by relevance (Tavily + DuckDuckGo) |
-| **10+ LLM providers** | Ollama, OpenAI, Anthropic, Google, DeepSeek, Mistral, Groq, Perplexity, Together - local or cloud |
-| **Knowledge graph** | Interactive force-directed graph of cited papers - click any node to open the source |
-| **Structured reports** | Rich Markdown with Executive Summary, Key Findings, Critical Analysis, Methodological Notes, and Implications |
-| **Image gallery** | Automatically fetches related images and charts/graphs for any research topic, with lightbox navigation |
-| **Follow-up chat** | Ask questions about the report - answers include formatted Markdown with source citation badges linked to the actual papers |
-| **Citation styles** | Switch between Inline `[S#]`, APA, MLA, Chicago, and IEEE citation formats |
-| **Executive brief** | AI-generated concise summary extracted from the report's key sections - no LLM call needed |
-| **Research timeline** | Extracts year-based milestones from the report and arXiv source URLs into a visual timeline |
-| **PDF upload & analysis** | Upload multiple PDF files, extract text, and include the content as additional research context |
-| **DOI resolution** | Automatically resolves DOIs for arXiv sources and displays clickable DOI badges on reference cards |
-| **PDF export** | Generates a styled HTML page optimized for printing as PDF |
-| **Text-to-speech** | Reads the report aloud with markdown syntax stripped for clean audio |
-| **Zero-knowledge encryption** | Passphrase-protected with WebAuthn biometric unlock. API keys encrypted end-to-end in the browser |
-| **Critique & revision** | Automatic scoring, hallucination detection, and citation validation with configurable strictness |
-| **Deep controls** | Configure search depth, source count, critic strictness, and custom model overrides |
-| **Research queue** | Click multiple topics and they run sequentially - no parallel conflicts |
-| **Health check** | `GET /health` reports status, version, provider and pipeline configuration for orchestrators - local state only, no LLM call |
-
----
-
-## Benchmarks
-
-Full suite: 8 categories covering every non-LLM stage of the pipeline - ranking, validation, summarization, prompt construction, DOI resolution, image search caching, state management, and PDF handling. Run with `python -m benchmarks.run_benchmarks`.
-
-**Environment:** Python 3.14.4 · Windows-11-10.0.26200-SP0 · 8 CPUs (Intel64 Family 6 Model 140) · 15.79 GB RAM · **Duration: 36.16s**
-
-### Document Ranking & Text Chunking
-
-| Chunk Size | Overlap | Chunks | Avg Time | Throughput |
-| :--- | :--- | :--- | :--- | :--- |
-| 250 chars | 25 chars | 16 | 11.0us | 325,791,691 chars/s |
-| 500 chars | 50 chars | 8 | 8.0us | 458,598,464 chars/s |
-| 1000 chars | 100 chars | 4 | 5.0us | 723,618,506 chars/s |
-| 2000 chars | 200 chars | 2 | 3.0us | 1,111,112,631 chars/s |
-| 4000 chars | 400 chars | 1 | 2.0us | 2,360,655,783 chars/s |
-
-| Documents | Avg Time | Std Dev |
-| :--- | :--- | :--- |
-| 5 | 3.89ms | ±971.0us |
-| 10 | 8.92ms | ±1.91ms |
-| 25 | 20.03ms | ±1.37ms |
-| 50 | 42.75ms | ±4.70ms |
-| 100 | 84.41ms | ±8.40ms |
-
-Ranking accuracy was validated against a hand-labeled query (`"quantum computing artificial intelligence"`): all 7 genuinely quantum-computing documents were returned in the top 7 positions, with two adjacent physics papers correctly pushed to the bottom of the 10-document set.
-
-**What the numbers show.** TF-IDF ranking is linear in document count - 100 documents takes almost exactly 20x longer than 5 (84.41ms vs 3.89ms), the expected behavior for a cosine-similarity sweep with no indexing structure. This is fine at research-pipeline scale (5–50 sources per report) but would need an ANN index if source counts grew into the thousands. Chunking throughput is not the bottleneck at any scale tested - it stays above 300M chars/s even at the smallest chunk size.
-
-### Citation Validation & Factual Consistency
-
-| Documents | Citations in Draft | Invalid Found | Avg Time |
-| :--- | :--- | :--- | :--- |
-| 10 | 15 | 10 | 50.6us |
-| 20 | 25 | 10 | 38.9us |
-| 50 | 40 | 10 | 55.9us |
-| 100 | 85 | 10 | 52.8us |
-
-| Documents | Claims | Unverified Found | Avg Time |
-| :--- | :--- | :--- | :--- |
-| 10 | 5 | 3 | 92.2us |
-| 20 | 20 | 17 | 256.0us |
-| 50 | 50 | 59 | 3.12ms |
-| 100 | 100 | 132 | 10.09ms |
-
-**What the numbers show.** Citation validation (does `[S3]` point to a real source?) is a lookup - it stays flat at ~40–56us regardless of document count, because it's checking references against a fixed source list, not comparing text. Factual consistency (does this specific claim match any source content?) scales with claims × documents: 100 documents / 100 claims takes 10.09ms against 10/5's 92.2us, roughly 100x the work for 20x the claims, consistent with pairwise comparison rather than a lookup. The two checks catch different failure modes - a citation can point to a real source and still misrepresent what that source says.
-
-### Summarization & Timeline Extraction
-
-| Report Size | Brief Size | Compression Ratio | Avg Time |
-| :--- | :--- | :--- | :--- |
-| 500 chars | 509 chars | 101.8% | 9.0us |
-| 1,000 chars | 1,008 chars | 100.8% | 14.0us |
-| 5,000 chars | 2,411 chars | 48.2% | 43.0us |
-| 10,000 chars | 2,411 chars | 24.1% | 50.0us |
-| 50,000 chars | 2,929 chars | 5.9% | 448.0us |
-
-**What the numbers show.** Below ~5,000 characters, the executive brief is effectively the full report (100%+ "compression" - brief formatting adds slightly more characters than it removes). This is correct, not a bug: a short report has no fat to trim. Real compression only appears once the report has enough structure to extract *from* - 50,000 chars down to 2,929 (5.9%) is the brief doing its actual job of pulling Executive Summary and Key Findings out of a much longer document, with no LLM call required either way.
-
-| Scenario | Avg Time | Entries |
-| :--- | :--- | :--- |
-| Report Only | 820.0us | 4 |
-| Sources Only | 51.0us | 6 |
-| Combined | 539.0us | 7 |
-| Many Sources (200) | 1.47ms | 6 |
-
-Timeline extraction parses years (1900–2029) from report text and arXiv submission dates. Combined extraction (539us) is faster than report-only (820us) despite covering more ground, because arXiv-URL date parsing is cheaper than free-text year regex matching - the source-derived entries subsidize the total.
-
-### Chat Prompt Construction
-
-| Sources | Avg Time | Std Dev |
-| :--- | :--- | :--- |
-| 0 | 7.7us | ±0.7us |
-| 5 | 7.2us | ±4.8us |
-| 10 | 7.3us | ±1.2us |
-| 20 | 19.5us | ±6.4us |
-| 50 | 20.7us | ±4.8us |
-| 100 | 19.0us | ±0.8us |
-
-All 7 content checks (report inclusion, question, source list, answer marker, formatting/role/citation instructions) passed at every source count. Prompt construction is string concatenation, not analysis - the cost roughly doubles between 10 and 20 sources and then flattens, consistent with a fixed per-source template cost hitting diminishing returns as the prompt becomes dominated by the constant-size report body rather than the source list.
-
-### DOI Resolution (arXiv ID Extraction)
-
-| URLs Processed | IDs Found | Extraction Ratio | Avg Time | Throughput |
-| :--- | :--- | :--- | :--- | :--- |
-| 10 | 8 | 80% | 22.4us | 447,160 urls/s |
-| 50 | 40 | 80% | 94.0us | 531,858 urls/s |
-| 100 | 80 | 80% | 172.8us | 578,759 urls/s |
-| 500 | 400 | 80% | 898.6us | 556,410 urls/s |
-| 1,000 | 800 | 80% | 2.77ms | 360,964 urls/s |
-| 5,000 | 4,000 | 80% | 11.82ms | 423,028 urls/s |
-
-The extraction ratio holds exactly at 80% across every scale tested - a deliberate property of the benchmark's mixed URL set (arXiv abs/pdf/versioned URLs alongside non-arXiv URLs that should correctly *not* match), not a limitation of the regex. Pattern-level tests confirm this: abs URLs, pdf URLs, versioned URLs, HTTPS variants, case-insensitive matches, and query-param URLs all extract 1-for-1, while non-arXiv-only URLs correctly extract 0.
-
-**What the numbers show.** Throughput is non-monotonic (578K urls/s at 100 URLs, dropping to 361K urls/s at 1,000, recovering to 423K urls/s at 5,000) - this is measurement noise from list allocation and GC pauses at those batch sizes on a single run, not a real performance cliff. At every scale it stays in the same order of magnitude (350K–580K urls/s), which is what matters: DOI resolution's real cost is the arXiv API round-trip this function feeds into, not the regex.
-
-### Image Search Cache & Search Latency
-
-| Metric | Value |
-| :--- | :--- |
-| Image Search - Cold | 1.273s avg (±0.728s, range 0.487s–1.925s) |
-| Image Search - Warm (cached) | 0.125ms avg (±0.017ms) |
-| Graph Search - Cold | 1.026s avg (±0.376s) |
-| **Cache Acceleration Ratio** | **10,184x** |
-| Cache Throughput (50 runs) | 0.1379ms/run, 0.0069s total |
-
-**What the numbers show.** This is the standout number in the suite, and it is exactly what it looks like: the 1-hour in-memory image cache turns a ~1.3s DDGS network round-trip into a 0.125ms dictionary lookup. The wide std dev on cold search (±0.728s, nearly 60% of the mean) reflects real network variance - DDGS latency is not something this system controls - which makes the cache not just a speed optimization but a variance killer: every repeat request for a topic during its cache window has fully deterministic, sub-millisecond latency regardless of what the network is doing that day.
-
-### Pipeline & State Management
-
-| Operation | Avg Time |
-| :--- | :--- |
-| Basic Agent State Construction | 37.9us |
-| Full Agent State Construction | 106.0us |
-| Research Response (5 sources) | 98.3us |
-| Research Response (100 sources) | 183.4us |
-| Model Dump | 61.7us |
-| JSON Serialize | 181.8us |
-| Full Serialization (end-to-end) | 333.1us |
-| Serialized Output Size | 14,091 bytes (13.8 KB) |
-
-| Documents | Nodes | Avg Time |
-| :--- | :--- | :--- |
-| 5 | 5 | 2.57ms |
-| 10 | 10 | 4.51ms |
-| 25 | 25 | 14.50ms |
-| 50 | 50 | 40.30ms |
-| 100 | 100 | 89.45ms |
-
-**What the numbers show.** Knowledge graph construction scales worse than linearly - 100 documents (89.45ms) takes over 2x the per-document cost of 50 documents (40.30ms), consistent with pairwise link-detection between nodes rather than a single pass. At 100 sources this is still under 90ms, well inside any reasonable UI budget, but it's the one component in this suite worth watching if source counts grow substantially past what a single research report typically returns (5–50).
-
-### PDF Upload Handling & Text Extraction
-
-| Pages | PDF Size | Extracted Chars | Avg Time | Throughput |
-| :--- | :--- | :--- | :--- | :--- |
-| 1 | 8,382 bytes | 2,595 chars | 11.02ms | 90.7 pages/s |
-| 3 | 21,887 bytes | 7,302 chars | 19.54ms | 153.5 pages/s |
-| 5 | 35,448 bytes | 12,002 chars | 23.96ms | 208.7 pages/s |
-| 10 | 69,444 bytes | 23,764 chars | 57.38ms | 174.3 pages/s |
-| 20 | 137,435 bytes | 25,878 chars | 68.75ms | 290.9 pages/s |
-| 50 | 341,927 bytes | 25,878 chars | 54.79ms | 912.5 pages/s |
-
-**What the numbers show.** Extracted character count plateaus at 25,878 chars from 20 pages onward - this is the configured max-context truncation doing its job, not a parsing failure; the extractor correctly stops once it hits the context budget rather than wastefully parsing pages that will be discarded anyway. That's also why the 50-page row shows *higher* throughput (912.5 pages/s) than the 20-page row (290.9 pages/s): once truncation kicks in, extraction time is bounded by the character budget, not the page count, so nominal "pages/s" becomes an artifact of how many pages exist above the point where extraction stops mattering.
-
-Reference-section stripping removes 2–12% of document text depending on how much of the document is bibliography (`with_references`: 1,989 → 1,899 chars; `large_document`: 27,687 → 24,499 chars), while correctly leaving early in-text citations untouched (`early_references_kept`: only 37 chars removed from 1,675). Column-layout detection and text-density validation both run in under 1 microsecond, confirming they're not meaningfully contributing to the 11–69ms per-document extraction cost - that time is entirely PyMuPDF's PDF parsing.
-
-### Performance Summary
-
-| Benchmark | Best Case | Worst Case |
-| :--- | :--- | :--- |
-| Text Chunking (250–4000 chars) | 2.0us | 11.0us |
-| Citation Validation | 38.9us | 55.9us |
-| Executive Brief Generation | 9.0us | 448.0us |
-| arXiv ID Extraction | 22.4us | 11.82ms |
-| PDF Text Extraction (1–50 pages) | 11.02ms | 68.75ms |
-| Image Search Cache Acceleration | - | 10,184x faster |
-
-**Bottom line.** Every stage that isn't an LLM call or a network fetch (DDGS, DOI API) runs in microseconds to low milliseconds. The two genuine cost centers are PDF extraction (bounded by PyMuPDF's parsing speed, ~11–69ms per document) and cold external search (~1.0–1.3s per DDGS call, mitigated 10,184x by the 1-hour cache). Neither is a design flaw - they're the honest floor set by parsing a real file format and hitting a real network, and this benchmark suite exists to keep that floor visible as the system evolves.
-
-*Full report generated by Multi-Agent Research System Benchmark Suite v0.4.0.*
-
----
-
-## Repository Structure
-
-```
-multi-agent-research-system/
-├── run.py                    # Backend entry point (uvicorn)
-├── requirements.txt
-├── src/
-│   ├── api.py                # FastAPI routes + SSE streaming
-│   ├── config.py             # Environment configuration
-│   ├── schemas.py            # Pydantic models
-│   ├── agents/
-│   │   ├── graph.py          # LangGraph workflow definition
-│   │   ├── nodes.py          # Agent node functions
-│   │   └── state.py          # Graph state schema
-│   ├── tools/
-│   │   ├── search.py         # Tavily + DuckDuckGo search
-│   │   ├── pdf.py            # PDF download + parsing (PyMuPDF)
-│   │   ├── ranking.py        # Source relevance ranking (TF-IDF)
-│   │   ├── validation.py     # Citation validation
-│   │   ├── graph.py          # Knowledge graph extraction
-│   │   ├── chat.py           # Follow-up chat prompt builder
-│   │   ├── images.py         # Image + chart search (DDGS)
-│   │   ├── summarize.py      # Executive brief + timeline extraction
-│   │   ├── doi.py            # ArXiv DOI resolution
-│   │   └── __init__.py
-│   ├── evaluation/
-│   │   └── retrieval.py      # Retrieval evaluation
-│   └── utils/
-│       ├── crypto.py         # Server-side crypto helpers
-│       └── tracing.py        # LangSmith tracing
-├── frontend/
-│   ├── src/
-│   │   ├── main.tsx          # React entry + BrowserRouter
-│   │   ├── App.tsx           # Research app (route: /app)
-│   │   ├── pages/
-│   │   │   └── Welcome.tsx   # Marketing landing page (route: /)
-│   │   ├── components/
-│   │   │   ├── Sidebar.tsx          # Collapsible nav + passphrase mgmt
-│   │   │   ├── ResearchForm.tsx     # Topic input + config + PDF upload
-│   │   │   ├── ReportView.tsx       # Report viewer + all features
-│   │   │   ├── LoadingState.tsx     # Real-time progress dashboard
-│   │   │   ├── KnowledgeGraph.tsx   # Force-directed citation graph
-│   │   │   ├── ImageGallery.tsx     # Image/chart gallery with lightbox
-│   │   │   ├── ChatPanel.tsx        # Follow-up chat with markdown
-│   │   │   ├── ErrorBoundary.tsx    # Error fallback UI
-│   │   │   └── BrandIcon.tsx        # SVG brand icon component
-│   │   ├── hooks/
-│   │   │   └── useResearch.ts       # Research state + queue logic
-│   │   └── lib/
-│   │       ├── api.ts               # API client + all endpoints
-│   │       ├── crypto.ts            # AES-256-GCM + PBKDF2 encryption
-│   │       ├── webauthn.ts          # WebAuthn PRF biometric unlock
-│   │       └── favicon.ts           # Dynamic theme-aware favicon swap
-│   └── package.json
-└── benchmarks/
-    └── run_benchmarks.py      # 8-category benchmark suite
+```mermaid
+flowchart TD
+    A["User Input: Idea Query or Local Project Path"] --> B["1. Analyzer Agent: Intent & Scope"]
+    B --> C["2. Memory Retriever: SQLite FTS5 & Context"]
+    C --> D["3. Planner Agent: Objectives & Acceptance Criteria"]
+    D --> E{"Plan Approved / Auto-policy"}
+    E --> F["Orchestrator: Shared Budget Guard"]
+    F --> G["Parallel Source Tunnels Dispatcher"]
+    G --> G1["GitHub Deep Extraction (README/Releases)"]
+    G --> G2["Official Documentation Tunnel"]
+    G --> G3["Research Papers (arXiv/OpenAlex)"]
+    G --> G4["Browser & Web (HTTP / Playwright + SSRF)"]
+    G --> G5["Developer Communities (StackOverflow/Reddit)"]
+    G --> G6["Read-Only Local Project Tunnel"]
+    G1 & G2 & G3 & G4 & G5 & G6 --> H["4. Normalizer & Deduplicator"]
+    H --> I["5. Evidence Verifier (Freshness/Relevance)"]
+    I --> J["6. Critic Agent: Coverage Score"]
+    J --> K{"Material Gaps & Budget Remains?"}
+    K -- "Yes (Score < 80 & Round < Max)" --> L["7. Targeted Gap Planner"]
+    L --> G
+    K -- "No (Score >= 80 or Budget Depleted)" --> M["8. Synthesizer: Comparison Table & Cards"]
+    M --> N["9. Evaluator & LangSmith Tracing"]
+    N --> O["10. Finalizer & Memory Persister"]
 ```
 
 ---
 
-## Installation
+## 2. Technology Stack
+
+| Layer | Technologies & Libraries | Responsibility |
+|---|---|---|
+| **Multi-Agent Orchestrator** | **LangGraph**, **LangChain Core** | State machine, fan-out, targeted gap loops, checkpoints |
+| **Backend Framework** | **Python 3.11+**, **FastAPI**, **Uvicorn** | REST API endpoints, asynchronous SSE event streaming |
+| **Data Validation** | **Pydantic v2** | Strict schema validation for all agent inter-communication |
+| **LLM Provider Engine** | **Groq Multi-Key Adapter** | 5-key resilient failover, HTTP 429 backoff, 401/403 cooldown |
+| **Browser Inspection** | **Playwright**, **aiohttp**, **BeautifulSoup4** | Safe HTTP fetching with headless browser fallback, SSRF guards |
+| **Frontend Framework** | **React 19**, **Vite 7**, **TypeScript** | Responsive single-page application with dark technical editorial theme |
+| **Diagrams & Flowcharts** | **Mermaid.js** | Live, event-driven workflow visualization reflecting backend state |
+| **Styling & Animation** | **Tailwind CSS v4**, **Framer Motion 12** | Custom typography, micro-interactions, dark aesthetic |
+| **Document Processing** | **PyMuPDF (Fitz)** | PDF extraction, academic paper segment parsing |
+| **Search Connectors** | **Tavily**, **DuckDuckGo**, **GitHub API**, **arXiv API** | Multi-source discovery and candidate harvesting |
+| **Persistence / Database** | **SQLite FTS5 + JSON Flat Files** | Fast BM25 full-text memory search, bounded content store |
+| **Observability & Eval** | **LangSmith**, **RavenEvaluator** | 10 quality metrics, 8-query evaluation dataset, secret redaction |
+
+---
+
+## 3. Deep Resource Intelligence & Extraction
+
+RAVEN does not stop at summarizing search snippets. Each discovered resource is inspected and unpacked into structured evidence:
+
+### A. Deep GitHub Repository Extraction
+- Queries the GitHub API and raw content endpoints for candidate repositories.
+- Extracts: stars, forks, open issues, primary language, license (SPDX), and push/release dates.
+- Fetches and parses **`README.md`** files, extracting architecture, features, and setup sections.
+- Synthesizes a **Repository Comparison Table** in the final report comparing language, stars, license, latest activity, and architectural suitability.
+
+### B. Browser & HTTP Inspection (`BrowserInspector`)
+- **HTTP First:** Fast, lightweight HTML extraction using `aiohttp` and `BeautifulSoup4`.
+- **Playwright Fallback:** Renders client-side JavaScript when a page requires browser execution.
+- **SSRF Guards (`safe_validate_url`):**
+  - Restricts schemes strictly to `http` and `https`.
+  - Rejects private, loopback, link-local, and multicast IP ranges (`127.0.0.1`, `169.254.169.254`, `10.0.0.0/8`, `192.168.0.0/16`).
+  - Resolves host DNS and validates resolved IPs against private network masks.
+  - Enforces response size caps (5MB) and timeouts.
+
+### C. 9-Field Resource Intelligence Cards
+Every inspected resource provides 9 structured fields:
+1. **What it is:** Concise description based on inspected text.
+2. **What it provides:** Key capabilities, APIs, and features.
+3. **Technical details:** Architecture, dependencies, stack, and versions.
+4. **Evidence extracted:** Verifiable excerpts with character and line boundaries.
+5. **Freshness & status:** Deterministic update age, retrieval timestamp, and verification status.
+6. **Relevance to query:** Objective link and matching technical terms.
+7. **Recommendation:** Actionable advice on whether to adopt, reuse, or avoid.
+8. **Limitations:** Missing capabilities, licensing risks, and unresolved unknowns.
+9. **Source link:** Canonical URL for verification.
+
+---
+
+## 4. Layered Memory & Storage Architecture
+
+RAVEN combines **SQLite FTS5** for fast BM25 full-text matching with human-readable **JSON flat files** in the `storage/` directory:
+
+```
+storage/
+├── content/                  # BoundedContentStore (50MB cap, raw page/README text)
+│   └── {hash}.txt
+├── memory/
+│   ├── raven_memory.db       # SQLite FTS5 virtual tables (episodic_fts, cache_fts)
+│   ├── episodic.json         # Compact summaries of completed runs
+│   ├── project.json          # Tech stack profiles and constraints of inspected codebases
+│   ├── decisions.json        # Architectural decisions explicitly approved by the user
+│   ├── evidence_cache.json   # Reusable evidence items with TTL
+│   ├── preferences.json      # User research preferences and report styles
+│   ├── failures.json         # Recurring failure patterns
+│   └── proposals.json        # Versioned improvement proposals
+└── traces/
+    └── {job_id}/
+        ├── metadata.json     # Run metadata and completion status
+        └── events.jsonl      # Chronological sequence of workflow events for live replay
+```
+
+---
+
+## 5. Evaluation, LangSmith & Continuous Learning
+
+### A. 10 Quality Metrics (`RavenEvaluator`)
+1. **Objective Coverage:** Proportion of objectives with verified evidence.
+2. **Citation Validity:** Proportion of citations resolving to gathered evidence.
+3. **Citation Support:** Verified excerpt substance supporting claims.
+4. **Resource Relevance:** Query and objective term overlap.
+5. **Source Diversity:** Coverage across repositories, docs, papers, and web.
+6. **Extraction Success:** Ratio of inspections yielding substantive content.
+7. **Freshness Correctness:** Accurate ISO date parsing without LLM guessing.
+8. **Correction Gain:** Measured coverage improvement from gap research passes.
+9. **Cost & Latency:** Shared budget calls and duration consumed.
+10. **Overall Score:** Weighted composite score (0–1.0).
+
+### B. Fixed Evaluation Benchmark Dataset
+Contains 8 realistic technical test cases:
+- GitHub repository comparison (DuckDB vs SQLite)
+- Framework documentation versions (LangGraph vs AutoGen)
+- Academic paper analysis (Speculative decoding)
+- Conflicting developer discussions (Node.js cluster vs worker threads)
+- JavaScript-rendered sites (Next.js App Router Server Actions)
+- Unreachable service handling (Fault tolerance)
+- Memory reuse with stale evidence re-verification
+- Gap loop triggering under missing evidence
+
+### C. Cross-Run Continuous Learning (`CrossRunLearningEngine`)
+- Aggregates recurring run failures (`storage/memory/failures.json`).
+- Generates versioned behavioral improvement proposals (query formulation, source priorities, extraction thresholds).
+- Tests proposals against the benchmark dataset and requires demonstrated score improvements before adoption.
+- **Safety Rule:** Self-review proposes reviewable parameter changes; arbitrary code rewrites are strictly blocked.
+
+---
+
+## 6. API Specification & Endpoints
+
+FastAPI server runs at `http://localhost:8000`:
+
+- `POST /api/research` — Launch research job (`topic`, `depth`, `provider`, `model`, `project_path`).
+- `GET /api/research/{job_id}/stream` — Server-Sent Events (SSE) live updates.
+- `GET /runs/{job_id}/events` — Replay sequenced workflow events.
+- `GET /health` — System status and Groq key slot availability.
+
+---
+
+## 7. Resilient Groq Key-Chaining
+
+- **Up to 5 Key Slots:** `GROQ_API_KEY_1` to `GROQ_API_KEY_5`.
+- **Rate-Limit Resilience:** Respects HTTP 429 `Retry-After` headers and rotates to next available key.
+- **Key Health Tracking:** Automatic cooldown on HTTP 401/403 invalid keys.
+- **Secret Redaction:** Strict regex scrubbing of all tokens from logs, traces, errors, and UI streams.
+- **Run Budget:** Enforced `MAX_LLM_CALLS_PER_RUN` and time limits.
+
+---
+
+## 8. Installation & Setup
 
 ```bash
-git clone <repository-url>
-cd multi-agent-research-system
+# 1. Clone repository
+git clone https://github.com/royxforge/revan.git
+cd revan
 
-# Backend
+# 2. Set up virtual environment
 python -m venv .venv
-source .venv/bin/activate
+.\.venv\Scripts\activate   # Windows
+# source .venv/bin/activate # Linux/macOS
+
+# 3. Install backend dependencies
 pip install -r requirements.txt
+pip install pytest-asyncio beautifulsoup4 playwright
 
-# Frontend
-cd frontend && npm install
+# 4. Configure environment
+cp .env.example .env
+# Edit .env with your GROQ_API_KEY_1..5
+
+# 5. Install frontend dependencies
+cd frontend
+npm install
+cd ..
 ```
-
-**Core dependencies:** LangGraph · LangChain · FastAPI · React 19 · Tailwind CSS v4 · PyMuPDF
 
 ---
 
-## Usage
+## 9. Running the Application
 
+### Start Backend
 ```bash
-# Terminal 1 - backend
 python run.py
-
-# Terminal 2 - frontend
-cd frontend && npm run dev
+# Runs at http://localhost:8000
 ```
 
-Open `http://localhost:5173` and navigate to `/app` to start researching.
-
-**Health & readiness probe:**
-
+### Start Frontend
 ```bash
-curl http://localhost:8000/health
-# {"status": "ok", "version": "0.4.0", "graph_loaded": true,
-#  "llm": {"configured": {"ollama": true, ...}}, "healthy": true}
-
-# Also verify the local model server is reachable (network I/O, opt-in)
-curl "http://localhost:8000/health?probe=true"
-```
-
-An unready instance answers **`503`** with `"status": "degraded"`, so a
-container orchestrator or load balancer that only checks the status code works
-without parsing the body. Without `?probe=true` the endpoint performs no network
-I/O, so it is cheap enough to call on a short interval.
-
-1. Enter a research topic (e.g., *"Impact of solid-state batteries on EV range"*)
-2. Configure depth (Fast / Balanced / Deep), source count (5–50), critic strictness, and LLM provider
-3. Watch the agents work in real time - Researching → Drafting → Critiquing
-4. Explore the report: knowledge graph, image gallery, follow-up chat, citation style switching, executive brief, timeline, PDF export, text-to-speech
-
-**Configuration** (`.env`):
-
-```env
-TAVILY_API_KEY=your_key_here
-
-# Local Mode
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3:8b
-
-# Cloud Mode (optional - any of these)
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-GOOGLE_API_KEY=AIza...
-DEEPSEEK_API_KEY=sk-...
+cd frontend
+npm run dev
+# Runs at http://localhost:5173
 ```
 
 ---
 
-## Citation
+## 10. Running Tests
 
-```bibtex
-@software{multiagentresearchsystem2026,
-  title = {Multi-Agent Research System: Autonomous Academic Research with Multi-Agent Verification},
-  year = {2026}
-}
+```bash
+# Run complete test suite (131 tests passing)
+python -m pytest tests/ -v
+
+# Run frontend build check
+cd frontend
+npm run build
 ```
+
+---
+
+## 11. Architecture Documents
+
+- [DECISIONS.md](DECISIONS.md): Architecture Decision Records (ADR-0001 through ADR-0010).
+- [AGENTS.md](AGENTS.md): Full agent node specifications and schema contracts.
+- [LICENSE](LICENSE): MIT License (2026 Revan).

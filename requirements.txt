@@ -21,3 +21,5 @@ python-multipart>=0.0.9
 defusedxml>=0.7.1
 # Security: HTML sanitisation for report export (bleach preferred; nh3 is a fallback)
 bleach>=6.1.0
+# Security & TLS: Trusted Mozilla CA bundle for HTTPS verification
+certifi>=2024.2.2

@@ -206,13 +206,13 @@ function MediaSection({
   title,
   icon,
   items,
-  topic,
+  topic: _topic,
   accentColor,
 }: {
   title: string
   icon: React.ReactNode
   items: ImageResult[]
-  topic: string
+  topic?: string
   accentColor: string
 }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)

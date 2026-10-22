@@ -124,8 +124,8 @@ export function Sidebar({
                     <BrandIcon size={32} />
                   </div>
                   <div>
-                    <span className="text-sm font-semibold text-warm-800 dark:text-warm-200">Multi-Agent Research System</span>
-                    <p className="text-[11px] text-warm-400 -mt-0.5">AI-Powered</p>
+                    <span className="text-sm font-semibold text-warm-800 dark:text-warm-200">RAVEN</span>
+                    <p className="text-[11px] text-warm-400 -mt-0.5">Project Intelligence & Research</p>
                   </div>
                 </div>
               </div>

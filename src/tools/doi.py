@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
 
@@ -36,7 +37,12 @@ async def resolve_doi(arxiv_id: str) -> str | None:
 
     url = f"https://export.arxiv.org/api/query?id_list={arxiv_id}&max_results=1"
     try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+        from src.utils.ssl_context import create_aiohttp_connector
+        connector = create_aiohttp_connector()
+        async with aiohttp.ClientSession(
+            connector=connector,
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
                     return None
@@ -71,16 +77,24 @@ def _cache_doi(arxiv_id: str, doi: str | None) -> None:
 
 async def resolve_dois_batch(urls: list[str], max_concurrency: int = 5) -> dict[str, str | None]:
     """Resolve DOIs for arXiv IDs found in the given URLs (bounded concurrency)."""
-    import asyncio
-
     arxiv_ids = extract_arxiv_ids(urls)
     result: dict[str, str | None] = {}
     semaphore = asyncio.Semaphore(max(1, max_concurrency))
 
     async def _one(aid: str) -> tuple[str, str | None]:
-        async with semaphore:
-            return aid, await resolve_doi(aid)
+        try:
+            async with semaphore:
+                return aid, await resolve_doi(aid)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("doi.batch_item_failed", arxiv_id=aid, error=str(exc))
+            return aid, None
 
-    for aid, doi in await asyncio.gather(*(_one(aid) for aid in arxiv_ids)):
-        result[aid] = doi
+    batch_results = await asyncio.gather(*(_one(aid) for aid in arxiv_ids), return_exceptions=True)
+    for res in batch_results:
+        if isinstance(res, asyncio.CancelledError):
+            raise res
+        elif isinstance(res, tuple):
+            result[res[0]] = res[1]
     return result

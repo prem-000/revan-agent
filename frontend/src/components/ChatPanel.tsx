@@ -65,7 +65,7 @@ function CopyButton({ text }: { text: string }) {
 
 /* ─── Source Citation Badge ─── */
 
-function SourceBadge({ index, sources }: { index: number; sources: string[] }) {
+export function SourceBadge({ index, sources }: { index: number; sources: string[] }) {
   const source = sources[index - 1]
   if (!source) return <span className="text-primary-600 dark:text-primary-400 font-medium">[S{index}]</span>
 

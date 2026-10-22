@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Search, Shuffle, Zap, BookOpen, Scale, Globe, Cpu, Key,
+  Search, Zap, BookOpen, Scale, Globe, Cpu, Key,
   Sliders, ChevronDown, ArrowRight, Star, Check, Upload,
-  FileText, X, AlertCircle, Loader2, FileUp, CheckSquare,
+  FileText, AlertCircle, Loader2, FileUp, CheckSquare,
   Square, Trash2,
 } from 'lucide-react'
 import { encryptField } from '../lib/crypto'
@@ -29,13 +29,13 @@ interface Props {
 }
 
 const PROVIDERS = [
+  { value: "groq", label: "Groq (5-Key Resilience Chaining)", needsKey: false, defaultModel: "openai/gpt-oss-120b", apiKeyPlaceholder: "Configured via server .env" },
   { value: "ollama", label: "Ollama (Local)", needsKey: false, defaultModel: "llama3" },
   { value: "openrouter", label: "OpenRouter", needsKey: true, defaultModel: "x-ai/grok-4.1-fast", apiKeyPlaceholder: "sk-or-..." },
   { value: "openai", label: "OpenAI", needsKey: true, defaultModel: "gpt-4o", apiKeyPlaceholder: "sk-proj-..." },
   { value: "anthropic", label: "Anthropic", needsKey: true, defaultModel: "claude-sonnet-4-20250514", apiKeyPlaceholder: "sk-ant-..." },
   { value: "google", label: "Google (Gemini)", needsKey: true, defaultModel: "gemini-2.0-flash", apiKeyPlaceholder: "AIza..." },
   { value: "perplexity", label: "Perplexity", needsKey: true, defaultModel: "sonar-pro", apiKeyPlaceholder: "pplx-..." },
-  { value: "groq", label: "Groq", needsKey: true, defaultModel: "mixtral-8x7b-32768", apiKeyPlaceholder: "gsk_..." },
   { value: "together", label: "Together AI", needsKey: true, defaultModel: "mistralai/Mixtral-8x22B-Instruct-v0.1", apiKeyPlaceholder: "tgp-..." },
   { value: "deepseek", label: "DeepSeek", needsKey: true, defaultModel: "deepseek-chat", apiKeyPlaceholder: "sk-..." },
   { value: "mistral", label: "Mistral AI", needsKey: true, defaultModel: "mistral-large-latest", apiKeyPlaceholder: "x_..." },
@@ -287,7 +287,7 @@ export function ResearchForm({ onSubmit, isLoading, selectedTopic, encryptionPas
   const [depth, setDepth] = useState(3)
   const [numPapers, setNumPapers] = useState(10)
   const [strictness, setStrictness] = useState(5)
-  const [provider, setProvider] = useState('ollama')
+  const [provider, setProvider] = useState('groq')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
